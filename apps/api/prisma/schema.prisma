@@ -1,0 +1,71 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum LicenseStatus {
+  ACTIVE
+  REVOKED
+  SUSPENDED
+}
+
+enum LicenseEventType {
+  ACTIVATE
+  REFRESH
+  REVOKE
+  REBIND
+  REBIND_DENIED
+  ADMIN_UPDATE
+}
+
+model Customer {
+  id        String    @id @default(uuid())
+  name      String
+  email     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  licenses  License[]
+}
+
+model License {
+  id               String          @id @default(uuid())
+  customerId       String?
+  customer         Customer?       @relation(fields: [customerId], references: [id])
+  planName         String
+  maxCompanies     Int
+  maxWorkstations  Int
+  status           LicenseStatus   @default(ACTIVE)
+  expiresAt        DateTime
+  hardwareHash     String?
+  rebindCount      Int             @default(0)
+  rebindPeriod     String          @default("")
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  activationTokens ActivationToken[]
+  events           LicenseEvent[]
+}
+
+model ActivationToken {
+  id         String    @id @default(uuid())
+  licenseId  String
+  license    License   @relation(fields: [licenseId], references: [id])
+  token      String    @unique
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+}
+
+model LicenseEvent {
+  id           String          @id @default(uuid())
+  licenseId    String?
+  license      License?        @relation(fields: [licenseId], references: [id])
+  type         LicenseEventType
+  hardwareHash String?
+  ip           String?
+  userAgent    String?
+  createdAt    DateTime        @default(now())
+}

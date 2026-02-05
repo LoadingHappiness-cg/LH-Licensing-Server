@@ -1,0 +1,12 @@
+{
+  "name": "lh-licensing-server",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "npm run dev:api & npm run dev:web",
+    "dev:api": "npm run dev -w @lh-licensing/api",
+    "dev:web": "npm run dev -w @lh-licensing/web",
+    "build": "npm run build -w @lh-licensing/api && npm run build -w @lh-licensing/web",
+    "lint": "npm run lint -w @lh-licensing/api && npm run lint -w @lh-licensing/web"
+  }
+}

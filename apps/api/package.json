@@ -1,0 +1,33 @@
+{
+  "name": "@lh-licensing/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "lint": "echo \"no lint configured\"",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy",
+    "keys:generate": "tsx scripts/generate-keys.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^8.4.2",
+    "@fastify/helmet": "^11.1.0",
+    "@fastify/rate-limit": "^9.1.0",
+    "@fastify/sensible": "^5.2.0",
+    "@prisma/client": "^5.15.0",
+    "dotenv": "^16.4.5",
+    "fastify": "^4.26.2",
+    "jose": "^5.5.0",
+    "pino": "^9.2.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.12",
+    "prisma": "^5.15.0",
+    "tsx": "^4.16.2",
+    "typescript": "^5.4.5"
+  }
+}
