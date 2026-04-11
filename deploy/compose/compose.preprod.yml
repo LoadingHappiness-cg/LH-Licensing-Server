@@ -1,0 +1,57 @@
+name: lh-licensing-preprod
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-lh_licensing_server}
+      POSTGRES_USER: ${POSTGRES_USER:-lh_licensing}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - /opt/lh-licensing/data/postgres:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lh_licensing} -d ${POSTGRES_DB:-lh_licensing_server}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  lh-licensing-api:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Database: Host=postgres;Port=5432;Database=${POSTGRES_DB:-lh_licensing_server};Username=${POSTGRES_USER:-lh_licensing};Password=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      Jwt__Issuer: ${JWT_ISSUER:?JWT_ISSUER is required}
+      Jwt__Audience: ${JWT_AUDIENCE:-lh-licensing-api}
+      Jwt__KeyId: ${JWT_KEY_ID:-lh-licensing-key-1}
+      Jwt__PrivateKeyPemPath: /run/secrets/lh-licensing-private.pem
+      Jwt__PublicKeyPemPath: /run/secrets/lh-licensing-public.pem
+      Admin__ApiKey: ${ADMIN_API_KEY:?ADMIN_API_KEY is required}
+      Admin__ActorId: ${ADMIN_ACTOR_ID:-bootstrap-admin}
+      Proxy__KnownProxies__0: ${TRUSTED_PROXY_IP:?TRUSTED_PROXY_IP is required}
+    secrets:
+      - lh-licensing-private-key
+      - lh-licensing-public-key
+    ports:
+      - "${API_BIND_IP:-0.0.0.0}:${API_PORT:-8080}:8080"
+    networks:
+      - backend
+
+networks:
+  backend:
+    driver: bridge
+
+secrets:
+  lh-licensing-private-key:
+    file: /opt/lh-licensing/secrets/lh-licensing-private.pem
+  lh-licensing-public-key:
+    file: /opt/lh-licensing/secrets/lh-licensing-public.pem

@@ -1,0 +1,9 @@
+@LH.Licensing.Server.Api_HostAddress = http://localhost:5025
+
+GET {{LH.Licensing.Server.Api_HostAddress}}/health
+
+###
+
+GET {{LH.Licensing.Server.Api_HostAddress}}/health/ready
+
+###

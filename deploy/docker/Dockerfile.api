@@ -1,0 +1,33 @@
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+
+COPY LH.Licensing.Server.sln ./
+COPY src/LH.Licensing.Server.Api/LH.Licensing.Server.Api.csproj src/LH.Licensing.Server.Api/
+COPY src/LH.Licensing.Server.Application/LH.Licensing.Server.Application.csproj src/LH.Licensing.Server.Application/
+COPY src/LH.Licensing.Server.Contracts/LH.Licensing.Server.Contracts.csproj src/LH.Licensing.Server.Contracts/
+COPY src/LH.Licensing.Server.Domain/LH.Licensing.Server.Domain.csproj src/LH.Licensing.Server.Domain/
+COPY src/LH.Licensing.Server.Infrastructure/LH.Licensing.Server.Infrastructure.csproj src/LH.Licensing.Server.Infrastructure/
+
+RUN dotnet restore LH.Licensing.Server.sln
+
+COPY src src
+
+RUN dotnet publish src/LH.Licensing.Server.Api/LH.Licensing.Server.Api.csproj -c Release -o /app/publish /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+WORKDIR /app
+
+ENV ASPNETCORE_URLS=http://+:8080 \
+    ASPNETCORE_ENVIRONMENT=Production
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /app/publish .
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=10s --timeout=3s --retries=6 CMD curl -fsS http://127.0.0.1:8080/health/ready >/dev/null || exit 1
+
+ENTRYPOINT ["dotnet", "LH.Licensing.Server.Api.dll"]
