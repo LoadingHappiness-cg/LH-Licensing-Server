@@ -136,3 +136,10 @@ Restore from a compressed dump:
 - If forwarded headers are ignored, check `Proxy__KnownProxies`.
 - If PostgreSQL is unreachable, confirm the VM firewall and Docker network.
 
+## Sample client smoke test
+
+For a real-mode smoke test against this preprod stack, pass the issuer configured in `/opt/lh-licensing/compose/.env` to the client sample:
+
+```bash
+--issuer="$JWT_ISSUER"
+```

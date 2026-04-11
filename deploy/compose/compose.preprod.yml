@@ -39,8 +39,10 @@ services:
       Admin__ActorId: ${ADMIN_ACTOR_ID:-bootstrap-admin}
       Proxy__KnownProxies__0: ${TRUSTED_PROXY_IP:?TRUSTED_PROXY_IP is required}
     secrets:
-      - lh-licensing-private-key
-      - lh-licensing-public-key
+      - source: lh-licensing-private-pem
+        target: lh-licensing-private.pem
+      - source: lh-licensing-public-pem
+        target: lh-licensing-public.pem
     ports:
       - "${API_BIND_IP:-0.0.0.0}:${API_PORT:-8080}:8080"
     networks:
@@ -51,7 +53,7 @@ networks:
     driver: bridge
 
 secrets:
-  lh-licensing-private-key:
+  lh-licensing-private-pem:
     file: /opt/lh-licensing/secrets/lh-licensing-private.pem
-  lh-licensing-public-key:
+  lh-licensing-public-pem:
     file: /opt/lh-licensing/secrets/lh-licensing-public.pem

@@ -736,6 +736,11 @@ internal sealed record SampleOptions
             options = options with { PublicKeyPemPath = publicKey };
         }
 
+        if (parsed.TryGetValue("issuer", out var issuer))
+        {
+            options = options with { Issuer = issuer };
+        }
+
         if (parsed.TryGetValue("stateFile", out var stateFile))
         {
             options = options with { StateFilePath = stateFile };

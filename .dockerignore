@@ -8,8 +8,6 @@ node_modules
 coverage
 dist
 docs
-samples
-tests
 apps
 package.json
 docker-compose.yml

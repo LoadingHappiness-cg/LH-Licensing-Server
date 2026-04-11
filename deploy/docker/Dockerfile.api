@@ -7,6 +7,8 @@ COPY src/LH.Licensing.Server.Application/LH.Licensing.Server.Application.csproj 
 COPY src/LH.Licensing.Server.Contracts/LH.Licensing.Server.Contracts.csproj src/LH.Licensing.Server.Contracts/
 COPY src/LH.Licensing.Server.Domain/LH.Licensing.Server.Domain.csproj src/LH.Licensing.Server.Domain/
 COPY src/LH.Licensing.Server.Infrastructure/LH.Licensing.Server.Infrastructure.csproj src/LH.Licensing.Server.Infrastructure/
+COPY tests/LH.Licensing.Server.Tests/LH.Licensing.Server.Tests.csproj tests/LH.Licensing.Server.Tests/
+COPY samples/LH.Licensing.Client.Sample/LH.Licensing.Client.Sample.csproj samples/LH.Licensing.Client.Sample/
 
 RUN dotnet restore LH.Licensing.Server.sln
 
