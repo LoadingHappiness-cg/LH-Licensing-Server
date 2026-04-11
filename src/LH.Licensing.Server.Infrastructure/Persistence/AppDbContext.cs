@@ -145,6 +145,8 @@ public sealed class AppDbContext : DbContext
         });
 
         var productId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var demoCustomerId = Guid.Parse("33333333-3333-3333-3333-333333333331");
+        var demoLicenseId = Guid.Parse("44444444-4444-4444-4444-444444444441");
         var seedTimestamp = new DateTimeOffset(2026, 4, 11, 0, 0, 0, TimeSpan.Zero);
 
         modelBuilder.Entity<Product>().HasData(
@@ -158,6 +160,16 @@ public sealed class AppDbContext : DbContext
                 AllowedAppIdsJson = """
                 ["lh.labels.gs1.desktop","lh.desktop.sample"]
                 """,
+                CreatedAt = seedTimestamp
+            });
+
+        modelBuilder.Entity<Customer>().HasData(
+            new Customer
+            {
+                Id = demoCustomerId,
+                Code = "DEMO",
+                Name = "LH Demo Customer",
+                Status = CustomerStatus.Active,
                 CreatedAt = seedTimestamp
             });
 
@@ -202,6 +214,21 @@ public sealed class AppDbContext : DbContext
                 """,
                 OfflineGraceDays = 14,
                 MaxActivations = 5,
+                CreatedAt = seedTimestamp
+            });
+
+        modelBuilder.Entity<License>().HasData(
+            new License
+            {
+                Id = demoLicenseId,
+                CustomerId = demoCustomerId,
+                ProductId = productId,
+                LicensePlanId = Guid.Parse("22222222-2222-2222-2222-222222222222"),
+                LicenseKey = "LH-DEMO-0001",
+                Status = LicenseStatus.Active,
+                StartsAt = seedTimestamp.AddDays(-1),
+                EndsAt = null,
+                PolicyVersion = 1,
                 CreatedAt = seedTimestamp
             });
     }
