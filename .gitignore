@@ -2,6 +2,7 @@ node_modules
 dist
 .env
 .env.*
+!deploy/compose/.env.example
 *.log
 .next
 .prisma
