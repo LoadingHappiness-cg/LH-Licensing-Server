@@ -201,7 +201,7 @@ internal sealed class LicenseDecisionEngine
         return errorCode switch
         {
             "refresh_token_not_found" or "refresh_token_expired" or "activation_revoked" or "license_inactive" or "product_mismatch" or "app_mismatch" or "fingerprint_mismatch" => LicenseState.Blocked,
-            _ => now <= snapshot.OfflineGraceUntil ? LicenseState.Degraded : LicenseState.Blocked
+            _ => LicenseState.Blocked
         };
     }
 }

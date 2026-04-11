@@ -181,7 +181,9 @@ public sealed class AdminLicenseTests : IClassFixture<TestApplicationFactory>
 
         using var scope = _factory.Services.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var license = await dbContext.Licenses.Include(x => x.Activations).SingleAsync();
+        var license = await dbContext.Licenses
+            .Include(x => x.Activations)
+            .SingleAsync(x => x.Id == licenseId);
         Assert.Equal(LicenseStatus.Revoked, license.Status);
         Assert.NotNull(license.RevokedAt);
         Assert.Equal(ActivationStatus.Revoked, license.Activations.Single().Status);
