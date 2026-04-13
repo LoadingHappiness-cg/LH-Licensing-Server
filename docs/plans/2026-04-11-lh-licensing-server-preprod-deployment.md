@@ -139,8 +139,9 @@ Restore from a compressed dump:
 
 ## Sample client smoke test
 
-For a real-mode smoke test against this preprod stack, pass the issuer configured in `/opt/lh-licensing/compose/.env` to the client sample:
+For a real-mode smoke test against this preprod stack, use the VM endpoint `http://192.168.27.3:8080` and pass the issuer configured in `/opt/lh-licensing/compose/.env` to the client sample:
 
 ```bash
+--baseUrl=http://192.168.27.3:8080 \
 --issuer="$JWT_ISSUER"
 ```

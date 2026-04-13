@@ -45,7 +45,7 @@ dotnet run --project src/LH.Licensing.Server.Api/LH.Licensing.Server.Api.csproj
 
 Expected local endpoints:
 
-- `http://$VM_PRIVATE_IP:8080` when the VM is reached directly
+- `http://192.168.27.3:8080` when the VM is reached directly
 - `/health`
 - `/health/ready`
 - `/api/licenses/activate`
@@ -61,7 +61,7 @@ export PATH="$DOTNET_ROOT:$PATH"
 
 dotnet run --project samples/LH.Licensing.Client.Sample/LH.Licensing.Client.Sample.csproj -- \
   --real=true \
-  --baseUrl=http://$VM_PRIVATE_IP:8080 \
+  --baseUrl=http://192.168.27.3:8080 \
   --issuer="$JWT_ISSUER" \
   --publicKey=/absolute/path/to/licensing-public.pem \
   --stateFile=/tmp/lh-licensing-client-state.json
