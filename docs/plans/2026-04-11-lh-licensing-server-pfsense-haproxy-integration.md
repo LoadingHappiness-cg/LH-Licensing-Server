@@ -19,7 +19,7 @@ The VM receives plain HTTP only.
 
 Configure the HAProxy backend to point at:
 
-- the VM private IP
+- the VM private IP, for example `192.168.27.3`
 - port `8080`
 - protocol `http`
 
@@ -73,6 +73,8 @@ Set:
 
 - `Proxy__KnownProxies__0=<pfSense HAProxy source IP>`
 
+The VM private IP can be documented alongside the deployment env example as `VM_PRIVATE_IP=192.168.27.3`, but HAProxy should still target the VM's actual private address on port `8080`.
+
 This prevents arbitrary clients from spoofing forwarded headers.
 
 ## Operational notes
@@ -81,4 +83,3 @@ This prevents arbitrary clients from spoofing forwarded headers.
 - there is no TLS configuration inside the VM
 - if the HAProxy source IP changes, update `Proxy__KnownProxies`
 - if the staging hostname changes, update `Jwt__Issuer` only if the sample/client validation expects that issuer
-

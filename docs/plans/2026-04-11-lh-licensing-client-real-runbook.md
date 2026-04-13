@@ -30,20 +30,22 @@ export DOTNET_ROOT=/Users/carlosgavela/.dotnet
 export PATH="$DOTNET_ROOT:$PATH"
 
 export ConnectionStrings__Database="Host=localhost;Port=5432;Database=lh_licensing_server;Username=postgres;Password=postgres"
-export Jwt__Issuer="https://localhost"
+export JWT_ISSUER="https://licensing.staging.loadinghappiness.local"
+export Jwt__Issuer="$JWT_ISSUER"
 export Jwt__Audience="lh-licensing-api"
 export Jwt__PrivateKeyPemPath="/absolute/path/to/licensing-private.pem"
 export Jwt__PublicKeyPemPath="/absolute/path/to/licensing-public.pem"
 export Jwt__KeyId="lh-licensing-key-1"
 export Admin__ApiKey="change-me"
 export Admin__ActorId="bootstrap-admin"
+export VM_PRIVATE_IP="192.168.27.3"
 
 dotnet run --project src/LH.Licensing.Server.Api/LH.Licensing.Server.Api.csproj
 ```
 
 Expected local endpoints:
 
-- `https://localhost:5001` or the HTTP port selected by the app host
+- `http://$VM_PRIVATE_IP:8080` when the VM is reached directly
 - `/health`
 - `/health/ready`
 - `/api/licenses/activate`
@@ -59,7 +61,8 @@ export PATH="$DOTNET_ROOT:$PATH"
 
 dotnet run --project samples/LH.Licensing.Client.Sample/LH.Licensing.Client.Sample.csproj -- \
   --real=true \
-  --baseUrl=https://localhost:5001 \
+  --baseUrl=http://$VM_PRIVATE_IP:8080 \
+  --issuer="$JWT_ISSUER" \
   --publicKey=/absolute/path/to/licensing-public.pem \
   --stateFile=/tmp/lh-licensing-client-state.json
 ```

@@ -41,6 +41,7 @@ deploy/
 
 The repository checkout lives in `/opt/lh-licensing/repo`.
 Secrets and data live outside the repository checkout.
+The example VM private IP used in runbooks and smoke tests is `192.168.27.3`, exported as `VM_PRIVATE_IP` in `/opt/lh-licensing/compose/.env`.
 
 ## Bring-up order
 
