@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { cadenceSourceLabel, formatCadenceMonths } from "@/lib/cadence";
 
 function addMonthsUtc(base: Date, months: number) {
   const result = new Date(base.getTime());
@@ -22,6 +23,9 @@ function formatDate(value: Date | string) {
 export function LicenseAdminActions({
   effectiveStatus,
   expiresAt,
+  renewalCadenceMonths,
+  renewalCadenceSource,
+  planRenewalCadenceMonths,
   activationLink,
   activationToken,
   canRenew,
@@ -29,6 +33,9 @@ export function LicenseAdminActions({
 }: {
   effectiveStatus: string;
   expiresAt: string;
+  renewalCadenceMonths: number;
+  renewalCadenceSource: string;
+  planRenewalCadenceMonths: number | null;
   activationLink: string;
   activationToken: string;
   canRenew: boolean;
@@ -69,6 +76,13 @@ export function LicenseAdminActions({
 
       <form action={renewAction} className="stack">
         <input type="hidden" name="months" value={selectedMonths} />
+        <div className="detail-item">
+          <div><strong>Effective cadence:</strong> {formatCadenceMonths(renewalCadenceMonths)}</div>
+          <div className="meta"><strong>Source:</strong> {cadenceSourceLabel(renewalCadenceSource)}</div>
+          {planRenewalCadenceMonths ? (
+            <div className="meta"><strong>Plan default:</strong> {formatCadenceMonths(planRenewalCadenceMonths)}</div>
+          ) : null}
+        </div>
         {!canRenew ? (
           <div className="detail-item" role="note">
             Renewal is unavailable for revoked licenses.

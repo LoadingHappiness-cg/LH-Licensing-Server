@@ -188,6 +188,9 @@ export default async function LicenseDetailPage({ params, searchParams }: { para
             <LicenseAdminActions
               effectiveStatus={effectiveStatus}
               expiresAt={license.expiresAt}
+              renewalCadenceMonths={license.renewalCadenceMonths}
+              renewalCadenceSource={license.renewalCadenceSource}
+              planRenewalCadenceMonths={license.plan?.renewalCadenceMonths ?? null}
               activationLink={activationLink}
               activationToken={activationToken}
               canRenew={effectiveStatus !== "REVOKED"}

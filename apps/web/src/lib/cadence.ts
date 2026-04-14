@@ -13,3 +13,8 @@ export function cadenceSnapshotLabel(source: string | null | undefined) {
   if (source === "LICENSE") return "License override snapshot";
   return "Plan default snapshot";
 }
+
+export function cadenceSourceLabel(source: string | null | undefined) {
+  if (source === "LICENSE") return "License override";
+  return "Inherited from plan";
+}
