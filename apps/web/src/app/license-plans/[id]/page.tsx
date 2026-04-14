@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminShell } from "../../components/AdminShell";
 import { adminFetch } from "@/lib/admin";
+import { formatCadenceMonths } from "@/lib/cadence";
 
 function currentLicenseStatus(license: { status: string; expiresAt: string }) {
   if (license.status !== "ACTIVE") return license.status;
@@ -27,6 +28,7 @@ async function updatePlanAction(formData: FormData) {
       code: String(formData.get("code") || ""),
       name: String(formData.get("name") || ""),
       durationDays: String(formData.get("durationDays") || "") || undefined,
+      renewalCadenceMonths: String(formData.get("renewalCadenceMonths") || "") || undefined,
       maxCompanies: String(formData.get("maxCompanies") || "") || undefined,
       maxWorkstations: String(formData.get("maxWorkstations") || "") || undefined,
       entitlements: parseJsonInput(formData.get("entitlements")),
@@ -82,14 +84,20 @@ export default async function PlanDetailPage({ params }: { params: { id: string 
                 <input name="durationDays" type="number" min="1" defaultValue={plan.durationDays || ""} />
               </label>
               <label>
+                Renewal cadence months
+                <input name="renewalCadenceMonths" type="number" min="1" defaultValue={plan.renewalCadenceMonths || ""} />
+              </label>
+            </div>
+            <div className="grid two">
+              <label>
                 Max companies
                 <input name="maxCompanies" type="number" min="1" defaultValue={plan.maxCompanies || ""} />
               </label>
+              <label>
+                Max workstations
+                <input name="maxWorkstations" type="number" min="1" defaultValue={plan.maxWorkstations || ""} />
+              </label>
             </div>
-            <label>
-              Max workstations
-              <input name="maxWorkstations" type="number" min="1" defaultValue={plan.maxWorkstations || ""} />
-            </label>
             <label>
               Entitlements JSON
               <textarea name="entitlements" defaultValue={JSON.stringify(plan.entitlements || {}, null, 2)} />
@@ -112,6 +120,7 @@ export default async function PlanDetailPage({ params }: { params: { id: string 
             <div className="detail-item"><strong>Code:</strong> {plan.code}</div>
             <div className="detail-item"><strong>Status:</strong> {plan.isActive ? "Active" : "Inactive"}</div>
             <div className="detail-item"><strong>Duration:</strong> {plan.durationDays || "-"}</div>
+            <div className="detail-item"><strong>Renewal cadence:</strong> {formatCadenceMonths(plan.renewalCadenceMonths)}</div>
             <div className="detail-item"><strong>Entitlements:</strong> <pre style={{ margin: 0, whiteSpace: "pre-wrap" }}>{JSON.stringify(plan.entitlements || {}, null, 2)}</pre></div>
           </div>
         </div>

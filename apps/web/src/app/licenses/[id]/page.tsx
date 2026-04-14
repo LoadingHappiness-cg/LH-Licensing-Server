@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { AdminShell } from "../../components/AdminShell";
 import { adminFetch } from "@/lib/admin";
 import { webConfig } from "@/lib/config";
+import { cadenceSnapshotLabel, formatCadenceMonths } from "@/lib/cadence";
 import { LicenseAdminActions } from "./LicenseAdminActions";
 
 function parseJsonInput(value: FormDataEntryValue | null) {
@@ -204,6 +205,9 @@ export default async function LicenseDetailPage({ params, searchParams }: { para
             <div className="detail-item"><strong>Product:</strong> {license.product?.code || "-"}</div>
             <div className="detail-item"><strong>Plan:</strong> {license.plan?.name || "-"}</div>
             <div className="detail-item"><strong>Status:</strong> <span className="badge">{effectiveStatus}</span></div>
+            <div className="detail-item"><strong>Renewal cadence:</strong> {formatCadenceMonths(license.renewalCadenceMonths)}</div>
+            <div className="detail-item"><strong>Cadence source:</strong> {cadenceSnapshotLabel(license.renewalCadenceSource)}</div>
+            <div className="detail-item"><strong>Plan cadence:</strong> {license.plan ? formatCadenceMonths(license.plan.renewalCadenceMonths) : "-"}</div>
             <div className="detail-item"><strong>Starts:</strong> {new Date(license.startsAt).toLocaleString()}</div>
             <div className="detail-item"><strong>Expires:</strong> {new Date(license.expiresAt).toLocaleString()}</div>
             <div className="detail-item"><strong>Notes:</strong> {license.notes || "-"}</div>

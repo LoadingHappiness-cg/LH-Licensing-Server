@@ -2,6 +2,7 @@ import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { AdminShell } from "../components/AdminShell";
 import { adminFetch } from "@/lib/admin";
+import { formatCadenceMonths } from "@/lib/cadence";
 
 function parseJsonInput(value: FormDataEntryValue | null) {
   if (typeof value !== "string" || !value.trim()) return {};
@@ -18,6 +19,7 @@ async function createPlanAction(formData: FormData) {
       code: String(formData.get("code") || ""),
       name: String(formData.get("name") || ""),
       durationDays: String(formData.get("durationDays") || "") || undefined,
+      renewalCadenceMonths: String(formData.get("renewalCadenceMonths") || "") || undefined,
       maxCompanies: String(formData.get("maxCompanies") || "") || undefined,
       maxWorkstations: String(formData.get("maxWorkstations") || "") || undefined,
       entitlements: parseJsonInput(formData.get("entitlements")),
@@ -79,6 +81,10 @@ export default async function LicensePlansPage({ searchParams }: { searchParams?
                 Duration days
                 <input name="durationDays" type="number" min="1" />
               </label>
+              <label>
+                Renewal cadence months
+                <input name="renewalCadenceMonths" type="number" min="1" placeholder="1 = monthly" />
+              </label>
             </div>
             <div className="grid two">
               <label>
@@ -120,6 +126,7 @@ export default async function LicensePlansPage({ searchParams }: { searchParams?
                 <th>Name</th>
                 <th>Status</th>
                 <th>Duration</th>
+                <th>Renewal</th>
                 <th></th>
               </tr>
             </thead>
@@ -131,6 +138,7 @@ export default async function LicensePlansPage({ searchParams }: { searchParams?
                   <td>{plan.name}</td>
                   <td><span className={`badge ${plan.isActive ? "success" : "danger"}`}>{plan.isActive ? "Active" : "Inactive"}</span></td>
                   <td>{plan.durationDays || "-"}</td>
+                  <td>{formatCadenceMonths(plan.renewalCadenceMonths)}</td>
                   <td><Link className="btn secondary" href={`/license-plans/${plan.id}`}>Details</Link></td>
                 </tr>
               ))}

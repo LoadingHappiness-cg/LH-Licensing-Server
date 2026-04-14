@@ -33,6 +33,11 @@ enum AuditEventType {
   LICENSE_EXPIRED
 }
 
+enum RenewalCadenceSource {
+  PLAN
+  LICENSE
+}
+
 model Customer {
   id          String       @id @default(uuid())
   code        String       @unique
@@ -68,6 +73,7 @@ model LicensePlan {
   code            String
   name            String
   durationDays    Int?
+  renewalCadenceMonths Int   @default(1)
   maxCompanies    Int?
   maxWorkstations Int?
   entitlements    Json
@@ -92,6 +98,8 @@ model License {
   status           LicenseStatus @default(ACTIVE)
   startsAt         DateTime     @default(now())
   expiresAt        DateTime
+  renewalCadenceMonths Int      @default(1)
+  renewalCadenceSource RenewalCadenceSource @default(PLAN)
   notes            String?
   overrides        Json?
   hardwareHash     String?

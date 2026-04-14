@@ -20,6 +20,22 @@ function withExpiredStatus<T extends { status: LicenseStatus; expiresAt: Date }>
   };
 }
 
+function cadenceMonthsFromDurationDays(durationDays?: number | null) {
+  if (!durationDays || durationDays <= 0) {
+    return 1;
+  }
+
+  return Math.max(1, Math.round(durationDays / 30));
+}
+
+function normalizeCadenceMonths(value?: number | null, fallback = 1) {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+
+  return fallback;
+}
+
 async function createAuditEvent(data: Prisma.AuditEventCreateInput) {
   await prisma.auditEvent.create({ data });
 }
@@ -242,6 +258,7 @@ export async function createPlan(input: {
   code: string;
   name: string;
   durationDays?: number;
+  renewalCadenceMonths?: number;
   maxCompanies?: number;
   maxWorkstations?: number;
   entitlements?: Prisma.InputJsonValue;
@@ -259,6 +276,7 @@ export async function createPlan(input: {
       code: normalize(input.code),
       name: input.name,
       durationDays: input.durationDays ?? null,
+      renewalCadenceMonths: normalizeCadenceMonths(input.renewalCadenceMonths, cadenceMonthsFromDurationDays(input.durationDays)),
       maxCompanies: input.maxCompanies ?? null,
       maxWorkstations: input.maxWorkstations ?? null,
       entitlements: input.entitlements ?? {},
@@ -281,6 +299,7 @@ export async function updatePlan(id: string, input: {
   code?: string;
   name?: string;
   durationDays?: number | null;
+  renewalCadenceMonths?: number | null;
   maxCompanies?: number | null;
   maxWorkstations?: number | null;
   entitlements?: Prisma.InputJsonValue;
@@ -294,6 +313,11 @@ export async function updatePlan(id: string, input: {
       ...(input.code ? { code: normalize(input.code) } : {}),
       ...(input.name ? { name: input.name } : {}),
       ...(input.durationDays !== undefined ? { durationDays: input.durationDays } : {}),
+      ...(input.renewalCadenceMonths !== undefined
+        ? { renewalCadenceMonths: normalizeCadenceMonths(input.renewalCadenceMonths, cadenceMonthsFromDurationDays(input.durationDays)) }
+        : input.durationDays !== undefined
+          ? { renewalCadenceMonths: cadenceMonthsFromDurationDays(input.durationDays) }
+          : {}),
       ...(input.maxCompanies !== undefined ? { maxCompanies: input.maxCompanies } : {}),
       ...(input.maxWorkstations !== undefined ? { maxWorkstations: input.maxWorkstations } : {}),
       ...(input.entitlements !== undefined ? { entitlements: input.entitlements } : {}),
@@ -395,6 +419,7 @@ export async function createLicense(input: {
   }
 
   const licenseKey = await generateUniqueLicenseKey(product.code);
+  const renewalCadenceMonths = plan ? normalizeCadenceMonths(plan.renewalCadenceMonths, cadenceMonthsFromDurationDays(plan.durationDays)) : 1;
   const license = await prisma.license.create({
     data: {
       licenseKey,
@@ -404,6 +429,8 @@ export async function createLicense(input: {
       status: input.status ?? LicenseStatus.ACTIVE,
       startsAt: input.startsAt ? new Date(input.startsAt) : new Date(),
       expiresAt: new Date(input.expiresAt),
+      renewalCadenceMonths,
+      renewalCadenceSource: plan ? "PLAN" : "LICENSE",
       notes: input.notes || null,
       overrides: input.overrides ?? {}
     },

@@ -27,6 +27,7 @@ async function main() {
     update: {
       name: "Basic Local",
       durationDays: 30,
+      renewalCadenceMonths: 1,
       maxCompanies: 1,
       maxWorkstations: 1,
       entitlements: {
@@ -41,6 +42,7 @@ async function main() {
       code: "BASIC_LOCAL",
       name: "Basic Local",
       durationDays: 30,
+      renewalCadenceMonths: 1,
       maxCompanies: 1,
       maxWorkstations: 1,
       entitlements: {
@@ -76,6 +78,8 @@ async function main() {
       status: LicenseStatus.ACTIVE,
       startsAt: new Date("2026-04-01T00:00:00.000Z"),
       expiresAt: new Date("2026-05-01T00:00:00.000Z"),
+      renewalCadenceMonths: 1,
+      renewalCadenceSource: "PLAN",
       notes: "Seeded license for local admin testing",
       overrides: {
         source: "seed"
@@ -89,6 +93,8 @@ async function main() {
       status: LicenseStatus.ACTIVE,
       startsAt: new Date("2026-04-01T00:00:00.000Z"),
       expiresAt: new Date("2026-05-01T00:00:00.000Z"),
+      renewalCadenceMonths: 1,
+      renewalCadenceSource: "PLAN",
       notes: "Seeded license for local admin testing",
       overrides: {
         source: "seed"

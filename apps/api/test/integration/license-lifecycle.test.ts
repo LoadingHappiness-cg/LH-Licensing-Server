@@ -573,3 +573,121 @@ test("activation-link generation succeeds for an active license", async () => {
     await fixture.cleanup();
   }
 });
+
+test("renewal cadence on a plan is persisted and copied onto a license snapshot", async () => {
+  const fixture = await createFixture({ withActivationToken: false });
+  let planId = "";
+  let licenseId = "";
+
+  try {
+    const createPlanResponse = await adminRequest("POST", "/api/v1/admin/license-plans", {
+      productId: fixture.product.id,
+      code: "QUARTERLY_LOCAL",
+      name: "Quarterly Local",
+      durationDays: 90,
+      renewalCadenceMonths: 3,
+      maxCompanies: 1,
+      maxWorkstations: 1,
+      entitlements: { refresh: true }
+    });
+
+    assert.equal(createPlanResponse.statusCode, 201);
+    const createdPlan = jsonBody(createPlanResponse);
+    planId = createdPlan.id;
+    assert.equal(createdPlan.renewalCadenceMonths, 3);
+
+    const createLicenseResponse = await adminRequest("POST", "/api/v1/admin/licenses", {
+      customerId: fixture.customer.id,
+      productId: fixture.product.id,
+      planId,
+      expiresAt: futureDate(30).toISOString()
+    });
+
+    assert.equal(createLicenseResponse.statusCode, 201);
+    const createdLicense = jsonBody(createLicenseResponse);
+    licenseId = createdLicense.id;
+    assert.equal(createdLicense.renewalCadenceMonths, 3);
+    assert.equal(createdLicense.renewalCadenceSource, "PLAN");
+
+    const fetchedLicense = await adminRequest("GET", `/api/v1/admin/licenses/${licenseId}`);
+    assert.equal(fetchedLicense.statusCode, 200);
+    const fetchedBody = jsonBody(fetchedLicense);
+    assert.equal(fetchedBody.renewalCadenceMonths, 3);
+    assert.equal(fetchedBody.renewalCadenceSource, "PLAN");
+  } finally {
+    if (licenseId) {
+      await prisma.auditEvent.deleteMany({
+        where: { OR: [{ licenseId }, { productId: fixture.product.id }] }
+      });
+      await prisma.activation.deleteMany({ where: { licenseId } });
+      await prisma.activationToken.deleteMany({ where: { licenseId } });
+      await prisma.installation.deleteMany({ where: { licenseId } });
+      await prisma.license.deleteMany({ where: { id: licenseId } });
+    }
+    if (planId) {
+      await prisma.licensePlan.deleteMany({ where: { id: planId } });
+    }
+    await fixture.cleanup();
+  }
+});
+
+test("changing a plan cadence does not rewrite an existing license snapshot", async () => {
+  const fixture = await createFixture({ withActivationToken: false });
+  let planId = "";
+  let licenseId = "";
+
+  try {
+    const createPlanResponse = await adminRequest("POST", "/api/v1/admin/license-plans", {
+      productId: fixture.product.id,
+      code: "MONTHLY_LOCAL",
+      name: "Monthly Local",
+      durationDays: 30,
+      renewalCadenceMonths: 1,
+      maxCompanies: 1,
+      maxWorkstations: 1,
+      entitlements: { refresh: true }
+    });
+
+    assert.equal(createPlanResponse.statusCode, 201);
+    const createdPlan = jsonBody(createPlanResponse);
+    planId = createdPlan.id;
+
+    const createLicenseResponse = await adminRequest("POST", "/api/v1/admin/licenses", {
+      customerId: fixture.customer.id,
+      productId: fixture.product.id,
+      planId,
+      expiresAt: futureDate(30).toISOString()
+    });
+
+    assert.equal(createLicenseResponse.statusCode, 201);
+    const createdLicense = jsonBody(createLicenseResponse);
+    licenseId = createdLicense.id;
+    assert.equal(createdLicense.renewalCadenceMonths, 1);
+    assert.equal(createdLicense.renewalCadenceSource, "PLAN");
+
+    const updatePlanResponse = await adminRequest("PATCH", `/api/v1/admin/license-plans/${planId}`, {
+      renewalCadenceMonths: 12
+    });
+    assert.equal(updatePlanResponse.statusCode, 200);
+
+    const fetchedLicense = await adminRequest("GET", `/api/v1/admin/licenses/${licenseId}`);
+    assert.equal(fetchedLicense.statusCode, 200);
+    const fetchedBody = jsonBody(fetchedLicense);
+    assert.equal(fetchedBody.renewalCadenceMonths, 1);
+    assert.equal(fetchedBody.renewalCadenceSource, "PLAN");
+  } finally {
+    if (licenseId) {
+      await prisma.auditEvent.deleteMany({
+        where: { OR: [{ licenseId }, { productId: fixture.product.id }] }
+      });
+      await prisma.activation.deleteMany({ where: { licenseId } });
+      await prisma.activationToken.deleteMany({ where: { licenseId } });
+      await prisma.installation.deleteMany({ where: { licenseId } });
+      await prisma.license.deleteMany({ where: { id: licenseId } });
+    }
+    if (planId) {
+      await prisma.licensePlan.deleteMany({ where: { id: planId } });
+    }
+    await fixture.cleanup();
+  }
+});
