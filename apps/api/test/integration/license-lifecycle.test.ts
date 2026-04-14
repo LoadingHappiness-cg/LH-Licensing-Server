@@ -476,3 +476,25 @@ test("activation-link generation is unavailable for non-active licenses", async 
     await fixture.cleanup();
   }
 });
+
+test("activation-link generation succeeds for an active license", async () => {
+  const fixture = await createFixture({ withActivationToken: false });
+  try {
+    const response = await adminRequest(
+      "POST",
+      `/api/v1/admin/licenses/${fixture.license.id}/activation-link`
+    );
+
+    assert.equal(response.statusCode, 200);
+    const body = jsonBody(response);
+    assert.ok(body.activationToken);
+
+    const activationTokens = await prisma.activationToken.findMany({
+      where: { licenseId: fixture.license.id }
+    });
+    assert.equal(activationTokens.length, 1);
+    assert.equal(activationTokens[0]?.token, body.activationToken);
+  } finally {
+    await fixture.cleanup();
+  }
+});
