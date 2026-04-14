@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { randomUUID } from "node:crypto";
 import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { AdminShell } from "../../components/AdminShell";
@@ -15,6 +16,20 @@ function parseJsonInput(value: FormDataEntryValue | null) {
 function currentLicenseStatus(license: { status: string; expiresAt: string }) {
   if (license.status !== "ACTIVE") return license.status;
   return new Date(license.expiresAt).getTime() < Date.now() ? "EXPIRED" : "ACTIVE";
+}
+
+type ActionState = {
+  status: "idle" | "success" | "error";
+  message?: string;
+  actionId?: string;
+};
+
+function actionSuccess(message: string): ActionState {
+  return { status: "success", message, actionId: randomUUID() };
+}
+
+function actionError(message: string): ActionState {
+  return { status: "error", message, actionId: randomUUID() };
 }
 
 async function updateLicenseAction(formData: FormData) {
@@ -70,20 +85,75 @@ async function mutateLicenseAction(formData: FormData) {
   revalidatePath(`/licenses/${id}`);
 }
 
-async function rearmLicenseAction(formData: FormData) {
+async function licenseLifecycleAction(_prevState: ActionState, formData: FormData): Promise<ActionState> {
+  "use server";
+
+  const id = String(formData.get("id") || "");
+  const action = String(formData.get("action") || "");
+  if (!id || !action) {
+    return actionError("Missing action data.");
+  }
+
+  try {
+    if (action === "extend") {
+      const expiresAt = String(formData.get("expiresAt") || "");
+      await adminFetch(`/admin/licenses/${id}/extend`, {
+        method: "POST",
+        body: JSON.stringify({ expiresAt })
+      });
+      revalidatePath("/licenses");
+      revalidatePath(`/licenses/${id}`);
+      return actionSuccess("License expiry extended.");
+    }
+
+    if (action === "revoke") {
+      await adminFetch(`/admin/licenses/${id}/revoke`, { method: "POST" });
+      revalidatePath("/licenses");
+      revalidatePath(`/licenses/${id}`);
+      return actionSuccess("License revoked.");
+    }
+
+    if (action === "suspend") {
+      await adminFetch(`/admin/licenses/${id}/suspend`, { method: "POST" });
+      revalidatePath("/licenses");
+      revalidatePath(`/licenses/${id}`);
+      return actionSuccess("License suspended.");
+    }
+
+    if (action === "reactivate") {
+      await adminFetch(`/admin/licenses/${id}/reactivate`, { method: "POST" });
+      revalidatePath("/licenses");
+      revalidatePath(`/licenses/${id}`);
+      return actionSuccess("License reactivated.");
+    }
+
+    return actionError("Unknown lifecycle action.");
+  } catch (error: any) {
+    return actionError(error?.message || "Unable to update license.");
+  }
+}
+
+async function rearmLicenseAction(_prevState: ActionState, formData: FormData): Promise<ActionState> {
   "use server";
 
   const id = String(formData.get("id") || "");
   const months = Number(formData.get("months") || 0);
-  if (!id || !Number.isInteger(months) || months < 1) return;
+  if (!id || !Number.isInteger(months) || months < 1) {
+    return actionError("Enter a valid renewal period.");
+  }
 
-  await adminFetch(`/admin/licenses/${id}/rearm`, {
-    method: "POST",
-    body: JSON.stringify({ months })
-  });
+  try {
+    await adminFetch(`/admin/licenses/${id}/rearm`, {
+      method: "POST",
+      body: JSON.stringify({ months })
+    });
 
-  revalidatePath("/licenses");
-  revalidatePath(`/licenses/${id}`);
+    revalidatePath("/licenses");
+    revalidatePath(`/licenses/${id}`);
+    return actionSuccess("Renewal applied.");
+  } catch (error: any) {
+    return actionError(error?.message || "Unable to apply renewal.");
+  }
 }
 
 export default async function LicenseDetailPage({ params, searchParams }: { params: { id: string }; searchParams?: { activationToken?: string } }) {
@@ -170,23 +240,10 @@ export default async function LicenseDetailPage({ params, searchParams }: { para
 
         <div className="card">
           <h2>Lifecycle actions</h2>
-          <form action={mutateLicenseAction} className="stack">
-            <input type="hidden" name="id" value={license.id} />
-            <div className="actions">
-              <button className="btn danger" type="submit" name="action" value="revoke">Revoke</button>
-              <button className="btn secondary" type="submit" name="action" value="suspend">Suspend</button>
-              <button className="btn secondary" type="submit" name="action" value="reactivate">Reactivate</button>
-            </div>
-            <label>
-              Extend expiry
-              <input name="expiresAt" type="datetime-local" />
-            </label>
-            <button className="btn secondary" type="submit" name="action" value="extend">Extend</button>
-          </form>
-
           <div style={{ marginTop: 20 }}>
             <h3>Activation link and renewal</h3>
             <LicenseAdminActions
+              licenseId={license.id}
               effectiveStatus={effectiveStatus}
               expiresAt={license.expiresAt}
               renderedAtUtc={renderedAtUtc}
@@ -196,6 +253,7 @@ export default async function LicenseDetailPage({ params, searchParams }: { para
               activationLink={activationLink}
               activationToken={activationToken}
               canRenew={effectiveStatus !== "REVOKED"}
+              lifecycleAction={licenseLifecycleAction}
               renewAction={rearmLicenseAction}
             />
           </div>

@@ -1,6 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import type { ButtonHTMLAttributes } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useFormState, useFormStatus } from "react-dom";
 import { cadenceSourceLabel, formatCadenceMonths } from "@/lib/cadence";
 
 const utcFormatter = new Intl.DateTimeFormat("en-GB", {
@@ -26,7 +29,46 @@ function formatDate(value: Date | string) {
   return utcFormatter.format(new Date(value));
 }
 
+type ActionState = {
+  status: "idle" | "success" | "error";
+  message?: string;
+  actionId?: string;
+};
+
+const initialActionState: ActionState = { status: "idle" };
+
+function PendingButton({
+  children,
+  pendingLabel,
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  pendingLabel: string;
+}) {
+  const { pending } = useFormStatus();
+
+  return (
+    <button
+      {...props}
+      disabled={props.disabled || pending}
+      aria-busy={pending ? "true" : undefined}
+    >
+      {pending ? pendingLabel : children}
+    </button>
+  );
+}
+
+function ActionMessage({ state }: { state: ActionState }) {
+  if (state.status === "idle" || !state.message) return null;
+
+  return (
+    <div className="detail-item" role="status" aria-live="polite">
+      {state.message}
+    </div>
+  );
+}
+
 export function LicenseAdminActions({
+  licenseId,
   effectiveStatus,
   expiresAt,
   renderedAtUtc,
@@ -36,8 +78,10 @@ export function LicenseAdminActions({
   activationLink,
   activationToken,
   canRenew,
+  lifecycleAction,
   renewAction
 }: {
+  licenseId: string;
   effectiveStatus: string;
   expiresAt: string;
   renderedAtUtc: string;
@@ -47,14 +91,34 @@ export function LicenseAdminActions({
   activationLink: string;
   activationToken: string;
   canRenew: boolean;
-  renewAction: (formData: FormData) => Promise<void>;
+  lifecycleAction: (prevState: ActionState, formData: FormData) => Promise<ActionState>;
+  renewAction: (prevState: ActionState, formData: FormData) => Promise<ActionState>;
 }) {
+  const router = useRouter();
   const [selectedMonths, setSelectedMonths] = useState(1);
   const [customMonths, setCustomMonths] = useState("1");
   const [notice, setNotice] = useState<string | null>(null);
+  const [lifecycleState, lifecycleFormAction] = useFormState(lifecycleAction, initialActionState);
+  const [renewalState, renewalFormAction] = useFormState(renewAction, initialActionState);
+  const lifecycleSuccessRef = useRef<string | null>(null);
+  const renewalSuccessRef = useRef<string | null>(null);
 
   const baseDate = effectiveStatus === "EXPIRED" ? new Date(renderedAtUtc) : new Date(expiresAt);
   const resultingExpiry = addMonthsUtc(baseDate, selectedMonths);
+
+  useEffect(() => {
+    if (lifecycleState.status === "success" && lifecycleState.actionId && lifecycleSuccessRef.current !== lifecycleState.actionId) {
+      lifecycleSuccessRef.current = lifecycleState.actionId;
+      router.refresh();
+    }
+  }, [lifecycleState.actionId, lifecycleState.status, router]);
+
+  useEffect(() => {
+    if (renewalState.status === "success" && renewalState.actionId && renewalSuccessRef.current !== renewalState.actionId) {
+      renewalSuccessRef.current = renewalState.actionId;
+      router.refresh();
+    }
+  }, [renewalState.actionId, renewalState.status, router]);
 
   async function copyToClipboard(value: string, label: string) {
     try {
@@ -82,7 +146,30 @@ export function LicenseAdminActions({
         </div>
       ) : null}
 
-      <form action={renewAction} className="stack">
+      <form action={lifecycleFormAction} className="stack">
+        <input type="hidden" name="id" value={licenseId} />
+        <div className="actions" style={{ flexWrap: "wrap" }}>
+          <PendingButton className="btn danger" type="submit" name="action" value="revoke" pendingLabel="Revoking...">
+            Revoke
+          </PendingButton>
+          <PendingButton className="btn secondary" type="submit" name="action" value="suspend" pendingLabel="Suspending...">
+            Suspend
+          </PendingButton>
+          <PendingButton className="btn secondary" type="submit" name="action" value="reactivate" pendingLabel="Reactivating...">
+            Reactivate
+          </PendingButton>
+        </div>
+        <label>
+          Extend expiry
+          <input name="expiresAt" type="datetime-local" />
+        </label>
+        <PendingButton className="btn secondary" type="submit" name="action" value="extend" pendingLabel="Extending...">
+          Extend
+        </PendingButton>
+        <ActionMessage state={lifecycleState} />
+      </form>
+
+      <form action={renewalFormAction} className="stack">
         <input type="hidden" name="months" value={selectedMonths} />
         <div className="detail-item">
           <div><strong>Effective cadence:</strong> {formatCadenceMonths(renewalCadenceMonths)}</div>
@@ -148,9 +235,10 @@ export function LicenseAdminActions({
           <div className="meta"><strong>Resulting expiry:</strong> {formatDate(resultingExpiry)}</div>
         </div>
 
-        <button className="btn" type="submit" disabled={!canRenew}>
+        <PendingButton className="btn" type="submit" disabled={!canRenew} pendingLabel="Applying renewal...">
           Apply renewal
-        </button>
+        </PendingButton>
+        <ActionMessage state={renewalState} />
       </form>
     </div>
   );
