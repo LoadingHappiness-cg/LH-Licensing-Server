@@ -17,6 +17,14 @@ const schema = z.object({
   ENTRA_CLIENT_SECRET: z.string().optional(),
   ENTRA_ADMIN_GROUP_ID: z.string().optional(),
   ENTRA_AUTHORITY_HOST: z.string().default("https://login.microsoftonline.com")
+}).superRefine((value, ctx) => {
+  if (!value.SIGNING_KEY_PRIVATE_PEM && !value.SIGNING_KEY_PRIVATE_PEM_PATH) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["SIGNING_KEY_PRIVATE_PEM"],
+      message: "Set SIGNING_KEY_PRIVATE_PEM or SIGNING_KEY_PRIVATE_PEM_PATH"
+    });
+  }
 });
 
 export const config = schema.parse(process.env);

@@ -1,5 +1,6 @@
 import AzureADProvider from "next-auth/providers/azure-ad";
 import type { NextAuthOptions } from "next-auth";
+import { webConfig } from "./config";
 
 function decodeJwtPayload(token?: string | null) {
   if (!token) return {};
@@ -17,11 +18,12 @@ function uniqueClaims(...values: Array<string[] | undefined>) {
 }
 
 export const authOptions: NextAuthOptions = {
+  secret: webConfig.nextAuthSecret,
   providers: [
     AzureADProvider({
-      clientId: process.env.ENTRA_CLIENT_ID || "",
-      clientSecret: process.env.ENTRA_CLIENT_SECRET || "",
-      tenantId: process.env.ENTRA_TENANT_ID || ""
+      clientId: webConfig.entraClientId,
+      clientSecret: webConfig.entraClientSecret,
+      tenantId: webConfig.entraTenantId
     })
   ],
   session: { strategy: "jwt" },
@@ -48,3 +50,5 @@ export const authOptions: NextAuthOptions = {
     }
   }
 };
+
+process.env.NEXTAUTH_URL = process.env.NEXTAUTH_URL || webConfig.siteUrl;

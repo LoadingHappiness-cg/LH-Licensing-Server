@@ -1,6 +1,7 @@
+import { webConfig } from "./config";
+
 export async function apiFetch<T>(path: string, token: string, init: RequestInit = {}) {
-  const base = process.env.API_BASE_URL || "http://localhost:3001/api/v1";
-  const res = await fetch(`${base}${path}`, {
+  const res = await fetch(`${webConfig.apiBaseUrl}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
