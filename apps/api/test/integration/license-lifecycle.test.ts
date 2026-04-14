@@ -1,0 +1,534 @@
+import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import { generateKeyPairSync, randomBytes, type KeyObject } from "node:crypto";
+import type { AddressInfo } from "node:net";
+import { after, before, test } from "node:test";
+import { AuditEventType, InstallationStatus, LicenseStatus } from "@prisma/client";
+import { exportJWK, SignJWT } from "jose";
+
+const adminTenantId = "testtenant";
+const adminClientId = "test-admin-client";
+const adminGroupId = "test-admin-group";
+const adminKid = "test-admin-key";
+const licenseKid = "test-license-key";
+const jwtIssuer = "license.test";
+const jwtAudience = "EtiquetasGS1Test";
+const appId = "EtiquetasGS1";
+const appVersion = "1.0.0";
+const hardwareHash = "HW-1234567890";
+
+type PrismaClient = typeof import("../../src/db/prisma.ts").prisma;
+type BuildServer = typeof import("../../src/server.ts").buildServer;
+type SignLicenseToken = typeof import("../../src/services/jwt.ts").signLicenseToken;
+
+let prisma: PrismaClient;
+let buildServer: BuildServer;
+let signLicenseToken: SignLicenseToken;
+let app: Awaited<ReturnType<BuildServer>>;
+let adminToken: string;
+let adminJwksServer: ReturnType<typeof createServer>;
+
+function requireDatabaseUrl() {
+  const databaseUrl = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error("Set TEST_DATABASE_URL or DATABASE_URL before running integration tests");
+  }
+  process.env.DATABASE_URL = databaseUrl;
+}
+
+function futureDate(days: number) {
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+}
+
+function pastDate(days: number) {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+}
+
+function jsonBody(response: { body: string }) {
+  return response.body ? JSON.parse(response.body) : {};
+}
+
+function makeLicenseTokenPrefix() {
+  return `IT_${randomBytes(4).toString("hex").toUpperCase()}`;
+}
+
+async function startAdminJwksServer() {
+  const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const jwk = await exportJWK(publicKey);
+  jwk.kid = adminKid;
+  jwk.use = "sig";
+  jwk.alg = "RS256";
+  const jwks = JSON.stringify({ keys: [jwk] });
+
+  const server = createServer((req, res) => {
+    if (req.url === `/${adminTenantId}/discovery/v2.0/keys`) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(jwks);
+      return;
+    }
+
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "not found" }));
+  });
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", () => resolve());
+  });
+
+  const address = server.address() as AddressInfo;
+  return {
+    server,
+    privateKey,
+    authorityHost: `http://127.0.0.1:${address.port}`
+  };
+}
+
+async function issueAdminToken(privateKey: KeyObject, authorityHost: string) {
+  return new SignJWT({ groups: [adminGroupId] })
+    .setProtectedHeader({ alg: "RS256", kid: adminKid })
+    .setIssuer(`${authorityHost}/${adminTenantId}/v2.0`)
+    .setAudience(adminClientId)
+    .setSubject("admin-user")
+    .setIssuedAt()
+    .setExpirationTime("1h")
+    .sign(privateKey);
+}
+
+async function adminRequest(
+  method: "GET" | "POST" | "PATCH",
+  url: string,
+  payload?: unknown
+) {
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${adminToken}`
+  };
+
+  if (payload !== undefined) {
+    headers["content-type"] = "application/json";
+  }
+
+  return app.inject({
+    method,
+    url,
+    headers,
+    payload: payload === undefined ? undefined : JSON.stringify(payload)
+  });
+}
+
+async function publicRequest(
+  method: "POST",
+  url: string,
+  payload: Record<string, unknown>
+) {
+  return app.inject({
+    method,
+    url,
+    headers: {
+      "content-type": "application/json"
+    },
+    payload: JSON.stringify(payload)
+  });
+}
+
+async function createFixture(options?: {
+  status?: LicenseStatus;
+  expiresAt?: Date;
+  withActivationToken?: boolean;
+}) {
+  const prefix = makeLicenseTokenPrefix();
+  const customer = await prisma.customer.create({
+    data: {
+      code: `${prefix}_CUSTOMER`,
+      name: `${prefix} Customer`,
+      email: `${prefix.toLowerCase()}@example.test`,
+      isActive: true
+    }
+  });
+
+  const product = await prisma.product.create({
+    data: {
+      code: `${prefix}_PRODUCT`,
+      name: `${prefix} Product`,
+      isActive: true
+    }
+  });
+
+  const plan = await prisma.licensePlan.create({
+    data: {
+      productId: product.id,
+      code: "BASIC",
+      name: `${prefix} Basic`,
+      durationDays: 30,
+      maxCompanies: 1,
+      maxWorkstations: 1,
+      entitlements: {}
+    }
+  });
+
+  const license = await prisma.license.create({
+    data: {
+      licenseKey: `${prefix}-LICENSE`,
+      customerId: customer.id,
+      productId: product.id,
+      planId: plan.id,
+      status: options?.status ?? LicenseStatus.ACTIVE,
+      startsAt: new Date(),
+      expiresAt: options?.expiresAt ?? futureDate(30),
+      notes: `${prefix} notes`,
+      overrides: {}
+    }
+  });
+
+  const activationToken = options?.withActivationToken === false
+    ? null
+    : await prisma.activationToken.create({
+        data: {
+          licenseId: license.id,
+          token: `${prefix}-ACTIVATION`
+        }
+      });
+
+  return {
+    prefix,
+    customer,
+    product,
+    plan,
+    license,
+    activationToken,
+    cleanup: async () => {
+      const licenseIds = [license.id];
+      const productIds = [product.id];
+      const customerIds = [customer.id];
+      const planIds = [plan.id];
+      const installationIds = (
+        await prisma.installation.findMany({
+          where: { OR: [{ licenseId: license.id }, { productId: product.id }] },
+          select: { id: true }
+        })
+      ).map((row) => row.id);
+
+      const allLicenseIds = licenseIds;
+
+      await prisma.auditEvent.deleteMany({
+        where: {
+          OR: [
+            { licenseId: { in: allLicenseIds } },
+            { customerId: { in: customerIds } },
+            { productId: { in: productIds } },
+            { installationId: { in: installationIds } }
+          ]
+        }
+      });
+      await prisma.activation.deleteMany({ where: { OR: [{ licenseId: { in: allLicenseIds } }, { installationId: { in: installationIds } }] } });
+      await prisma.activationToken.deleteMany({ where: { licenseId: { in: allLicenseIds } } });
+      await prisma.installation.deleteMany({ where: { id: { in: installationIds } } });
+      await prisma.license.deleteMany({ where: { id: { in: allLicenseIds } } });
+      await prisma.licensePlan.deleteMany({ where: { id: { in: planIds } } });
+      await prisma.product.deleteMany({ where: { id: { in: productIds } } });
+      await prisma.customer.deleteMany({ where: { id: { in: customerIds } } });
+    }
+  };
+}
+
+before(async () => {
+  requireDatabaseUrl();
+
+  const jwks = await startAdminJwksServer();
+  adminJwksServer = jwks.server;
+  process.env.ENTRA_TENANT_ID = adminTenantId;
+  process.env.ENTRA_CLIENT_ID = adminClientId;
+  process.env.ENTRA_ADMIN_GROUP_ID = adminGroupId;
+  process.env.ENTRA_AUTHORITY_HOST = jwks.authorityHost;
+  process.env.ENTRA_CLIENT_SECRET = "test-secret";
+  process.env.SIGNING_KEY_ID = licenseKid;
+  process.env.SIGNING_KEY_PRIVATE_PEM = generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey.export({
+    format: "pem",
+    type: "pkcs8"
+  }).toString();
+  process.env.JWT_ISSUER = jwtIssuer;
+  process.env.JWT_AUDIENCE = jwtAudience;
+  process.env.LICENSE_GRACE_DAYS = "14";
+
+  const appMod = await import("../../src/server.ts");
+  const prismaMod = await import("../../src/db/prisma.ts");
+  const jwtMod = await import("../../src/services/jwt.ts");
+  buildServer = appMod.buildServer;
+  prisma = prismaMod.prisma;
+  signLicenseToken = jwtMod.signLicenseToken;
+  app = await buildServer();
+  adminToken = await issueAdminToken(jwks.privateKey, jwks.authorityHost);
+});
+
+after(async () => {
+  await app?.close();
+  await prisma?.$disconnect();
+  adminJwksServer?.close();
+});
+
+test("activate succeeds for an active license and creates canonical installation plus activation records", async () => {
+  const fixture = await createFixture();
+  try {
+    const response = await publicRequest("POST", "/api/v1/licenses/activate", {
+      activationToken: fixture.activationToken?.token,
+      hardwareHash,
+      appId,
+      appVersion
+    });
+
+    assert.equal(response.statusCode, 200);
+    const body = jsonBody(response);
+    assert.ok(body.licenseToken);
+
+    const installation = await prisma.installation.findFirst({
+      where: { licenseId: fixture.license.id, appId, machineFingerprintHash: hardwareHash }
+    });
+    assert.ok(installation);
+    assert.equal(installation?.status, InstallationStatus.ACTIVE);
+
+    const activations = await prisma.activation.findMany({
+      where: { licenseId: fixture.license.id, installationId: installation!.id }
+    });
+    assert.equal(activations.length, 1);
+
+    const events = await prisma.auditEvent.findMany({
+      where: { licenseId: fixture.license.id }
+    });
+    assert.ok(events.some((event) => event.eventType === AuditEventType.ACTIVATE));
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("refresh succeeds for the same active installation and license pair", async () => {
+  const fixture = await createFixture();
+  try {
+    const activateResponse = await publicRequest("POST", "/api/v1/licenses/activate", {
+      activationToken: fixture.activationToken?.token,
+      hardwareHash,
+      appId,
+      appVersion
+    });
+    assert.equal(activateResponse.statusCode, 200);
+    const activateBody = jsonBody(activateResponse);
+
+    const refreshResponse = await publicRequest("POST", "/api/v1/licenses/refresh", {
+      licenseToken: activateBody.licenseToken,
+      hardwareHash,
+      appId,
+      appVersion: "1.0.1"
+    });
+
+    assert.equal(refreshResponse.statusCode, 200);
+    const refreshBody = jsonBody(refreshResponse);
+    assert.ok(refreshBody.licenseToken);
+
+    const activation = await prisma.activation.findFirst({
+      where: { licenseId: fixture.license.id }
+    });
+    assert.ok(activation);
+    assert.ok(activation?.lastRefreshedAt);
+
+    const events = await prisma.auditEvent.findMany({
+      where: { licenseId: fixture.license.id }
+    });
+    assert.ok(events.some((event) => event.eventType === AuditEventType.REFRESH));
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("refresh fails after license revocation", async () => {
+  const fixture = await createFixture();
+  try {
+    const activateResponse = await publicRequest("POST", "/api/v1/licenses/activate", {
+      activationToken: fixture.activationToken?.token,
+      hardwareHash,
+      appId,
+      appVersion
+    });
+    const activateBody = jsonBody(activateResponse);
+
+    const revokeResponse = await adminRequest("POST", `/api/v1/admin/licenses/${fixture.license.id}/revoke`);
+    assert.equal(revokeResponse.statusCode, 200);
+
+    const refreshResponse = await publicRequest("POST", "/api/v1/licenses/refresh", {
+      licenseToken: activateBody.licenseToken,
+      hardwareHash,
+      appId,
+      appVersion: "1.0.1"
+    });
+
+    assert.equal(refreshResponse.statusCode, 400);
+    assert.match(refreshResponse.body, /License not active/);
+
+    const events = await prisma.auditEvent.findMany({
+      where: { licenseId: fixture.license.id }
+    });
+    assert.ok(events.some((event) => event.eventType === AuditEventType.ADMIN_REVOKE));
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("activate fails for suspended license", async () => {
+  const fixture = await createFixture({ status: LicenseStatus.SUSPENDED });
+  try {
+    const response = await publicRequest("POST", "/api/v1/licenses/activate", {
+      activationToken: fixture.activationToken?.token,
+      hardwareHash,
+      appId,
+      appVersion
+    });
+
+    assert.equal(response.statusCode, 400);
+    assert.match(response.body, /License not active/);
+
+    const installationCount = await prisma.installation.count({
+      where: { licenseId: fixture.license.id }
+    });
+    assert.equal(installationCount, 0);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("activate fails for expired license", async () => {
+  const fixture = await createFixture({ expiresAt: pastDate(30) });
+  try {
+    const response = await publicRequest("POST", "/api/v1/licenses/activate", {
+      activationToken: fixture.activationToken?.token,
+      hardwareHash,
+      appId,
+      appVersion
+    });
+
+    assert.equal(response.statusCode, 400);
+    assert.match(response.body, /License expired/);
+
+    const activationCount = await prisma.activation.count({
+      where: { licenseId: fixture.license.id }
+    });
+    assert.equal(activationCount, 0);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("refresh fails for blocked installation", async () => {
+  const fixture = await createFixture();
+  try {
+    const activateResponse = await publicRequest("POST", "/api/v1/licenses/activate", {
+      activationToken: fixture.activationToken?.token,
+      hardwareHash,
+      appId,
+      appVersion
+    });
+    const activateBody = jsonBody(activateResponse);
+
+    const installation = await prisma.installation.findFirst({
+      where: { licenseId: fixture.license.id }
+    });
+    assert.ok(installation);
+
+    const blockResponse = await adminRequest("POST", `/api/v1/admin/installations/${installation!.id}/block`);
+    assert.equal(blockResponse.statusCode, 200);
+
+    const refreshResponse = await publicRequest("POST", "/api/v1/licenses/refresh", {
+      licenseToken: activateBody.licenseToken,
+      hardwareHash,
+      appId,
+      appVersion: "1.0.1"
+    });
+
+    assert.equal(refreshResponse.statusCode, 400);
+    assert.match(refreshResponse.body, /Installation blocked/);
+
+    const blockedInstallation = await prisma.installation.findUnique({
+      where: { id: installation!.id }
+    });
+    assert.equal(blockedInstallation?.status, InstallationStatus.BLOCKED);
+
+    const events = await prisma.auditEvent.findMany({
+      where: { installationId: installation!.id }
+    });
+    assert.ok(events.some((event) => event.eventType === AuditEventType.INSTALLATION_BLOCKED));
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("activate and refresh fail when the installation is bound to a different license", async () => {
+  const firstFixture = await createFixture();
+  const secondFixture = await createFixture({ withActivationToken: false });
+  try {
+    const firstActivate = await publicRequest("POST", "/api/v1/licenses/activate", {
+      activationToken: firstFixture.activationToken?.token,
+      hardwareHash,
+      appId,
+      appVersion
+    });
+    assert.equal(firstActivate.statusCode, 200);
+
+    const secondActivationToken = await prisma.activationToken.create({
+      data: {
+        licenseId: secondFixture.license.id,
+        token: `${secondFixture.prefix}-SECOND-ACTIVATION`
+      }
+    });
+
+    const secondLicenseToken = await signLicenseToken(secondFixture.license as any, {
+      company: secondFixture.customer.name,
+      plan: secondFixture.plan.name,
+      max_companies: secondFixture.plan.maxCompanies ?? 1,
+      max_workstations: secondFixture.plan.maxWorkstations ?? 1,
+      hw: hardwareHash,
+      product: secondFixture.product.code
+    });
+
+    const activateResponse = await publicRequest("POST", "/api/v1/licenses/activate", {
+      activationToken: secondActivationToken.token,
+      hardwareHash,
+      appId,
+      appVersion
+    });
+    assert.equal(activateResponse.statusCode, 400);
+    assert.match(activateResponse.body, /Installation bound to different license/);
+
+    const refreshResponse = await publicRequest("POST", "/api/v1/licenses/refresh", {
+      licenseToken: secondLicenseToken,
+      hardwareHash,
+      appId,
+      appVersion: "1.0.1"
+    });
+    assert.equal(refreshResponse.statusCode, 400);
+    assert.match(refreshResponse.body, /Installation bound to different license/);
+
+    const secondInstallations = await prisma.installation.findMany({
+      where: { licenseId: secondFixture.license.id }
+    });
+    assert.equal(secondInstallations.length, 0);
+  } finally {
+    await firstFixture.cleanup();
+    await secondFixture.cleanup();
+  }
+});
+
+test("activation-link generation is unavailable for non-active licenses", async () => {
+  const fixture = await createFixture({ status: LicenseStatus.SUSPENDED, withActivationToken: false });
+  try {
+    const response = await adminRequest(
+      "POST",
+      `/api/v1/admin/licenses/${fixture.license.id}/activation-link`
+    );
+
+    assert.equal(response.statusCode, 400);
+    assert.match(response.body, /active licenses/i);
+
+    const tokenCount = await prisma.activationToken.count({
+      where: { licenseId: fixture.license.id }
+    });
+    assert.equal(tokenCount, 0);
+  } finally {
+    await fixture.cleanup();
+  }
+});
