@@ -3,6 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { AdminShell } from "../../components/AdminShell";
 import { adminFetch } from "@/lib/admin";
+import { webConfig } from "@/lib/config";
+import { LicenseAdminActions } from "./LicenseAdminActions";
 
 function parseJsonInput(value: FormDataEntryValue | null) {
   if (typeof value !== "string" || !value.trim()) return {};
@@ -67,6 +69,22 @@ async function mutateLicenseAction(formData: FormData) {
   revalidatePath(`/licenses/${id}`);
 }
 
+async function rearmLicenseAction(formData: FormData) {
+  "use server";
+
+  const id = String(formData.get("id") || "");
+  const months = Number(formData.get("months") || 0);
+  if (!id || !Number.isInteger(months) || months < 1) return;
+
+  await adminFetch(`/admin/licenses/${id}/rearm`, {
+    method: "POST",
+    body: JSON.stringify({ months })
+  });
+
+  revalidatePath("/licenses");
+  revalidatePath(`/licenses/${id}`);
+}
+
 export default async function LicenseDetailPage({ params, searchParams }: { params: { id: string }; searchParams?: { activationToken?: string } }) {
   const [license, customers, products, plans] = await Promise.all([
     adminFetch<any>(`/admin/licenses/${params.id}`).catch(() => null),
@@ -80,6 +98,8 @@ export default async function LicenseDetailPage({ params, searchParams }: { para
   }
 
   const activationToken = searchParams?.activationToken || license.activationTokens?.[0]?.token || "";
+  const activationLink = activationToken ? `${webConfig.siteUrl}/licenses/${license.id}?activationToken=${encodeURIComponent(activationToken)}` : "";
+  const effectiveStatus = currentLicenseStatus(license);
 
   return (
     <AdminShell title={license.licenseKey} subtitle="Full license record with linked installations, activations, and audit events.">
@@ -163,10 +183,15 @@ export default async function LicenseDetailPage({ params, searchParams }: { para
           </form>
 
           <div style={{ marginTop: 20 }}>
-            <h3>Activation link</h3>
-            <div className="detail-item" style={{ wordBreak: "break-all" }}>
-              {activationToken || "No activation token generated yet"}
-            </div>
+            <h3>Activation link and renewal</h3>
+            <LicenseAdminActions
+              effectiveStatus={effectiveStatus}
+              expiresAt={license.expiresAt}
+              activationLink={activationLink}
+              activationToken={activationToken}
+              canRenew={effectiveStatus !== "REVOKED"}
+              renewAction={rearmLicenseAction}
+            />
           </div>
         </div>
       </div>
@@ -178,7 +203,7 @@ export default async function LicenseDetailPage({ params, searchParams }: { para
             <div className="detail-item"><strong>Customer:</strong> {license.customer?.name || "-"}</div>
             <div className="detail-item"><strong>Product:</strong> {license.product?.code || "-"}</div>
             <div className="detail-item"><strong>Plan:</strong> {license.plan?.name || "-"}</div>
-            <div className="detail-item"><strong>Status:</strong> <span className="badge">{currentLicenseStatus(license)}</span></div>
+            <div className="detail-item"><strong>Status:</strong> <span className="badge">{effectiveStatus}</span></div>
             <div className="detail-item"><strong>Starts:</strong> {new Date(license.startsAt).toLocaleString()}</div>
             <div className="detail-item"><strong>Expires:</strong> {new Date(license.expiresAt).toLocaleString()}</div>
             <div className="detail-item"><strong>Notes:</strong> {license.notes || "-"}</div>

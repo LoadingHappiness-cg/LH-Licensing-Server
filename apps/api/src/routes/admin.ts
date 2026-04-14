@@ -24,6 +24,7 @@ import {
   listProducts,
   reactivateLicense,
   revokeLicense,
+  rearmLicense,
   suspendLicense,
   updateCustomer,
   updateLicense,
@@ -352,6 +353,23 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       return reply.notFound("License not found");
     }
     return license;
+  });
+
+  app.post("/licenses/:id/rearm", async (request, reply) => {
+    const body = z.object({ months: z.coerce.number().int().positive() }).safeParse(request.body);
+    if (!body.success) {
+      return reply.badRequest(body.error.message);
+    }
+
+    try {
+      const license = await rearmLicense((request.params as { id: string }).id, body.data.months);
+      if (!license) {
+        return reply.notFound("License not found");
+      }
+      return license;
+    } catch (error: any) {
+      return reply.badRequest(error?.message || "Unable to rearm license");
+    }
   });
 
   app.post("/licenses/:id/activation-link", async (request, reply) => {
