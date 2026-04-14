@@ -2,6 +2,9 @@ node_modules
 dist
 .env
 .env.*
+!.env.example
+!apps/api/.env.example
+!apps/web/.env.example
 *.log
 .next
 .prisma
