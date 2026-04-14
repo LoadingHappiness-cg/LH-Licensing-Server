@@ -26,6 +26,7 @@ import {
   revokeLicense,
   rearmLicense,
   suspendLicense,
+  unblockInstallation,
   updateCustomer,
   updateLicense,
   updatePlan,
@@ -409,6 +410,18 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       return reply.notFound("Installation not found");
     }
     return installation;
+  });
+
+  app.post("/installations/:id/unblock", async (request, reply) => {
+    try {
+      const installation = await unblockInstallation((request.params as { id: string }).id);
+      if (!installation) {
+        return reply.notFound("Installation not found");
+      }
+      return installation;
+    } catch (error: any) {
+      return reply.badRequest(error?.message || "Unable to unblock installation");
+    }
   });
 
   app.get("/audit-events", async (request) => {

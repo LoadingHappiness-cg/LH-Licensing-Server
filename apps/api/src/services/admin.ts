@@ -678,6 +678,36 @@ export async function blockInstallation(id: string) {
   return installation;
 }
 
+export async function unblockInstallation(id: string) {
+  const current = await prisma.installation.findUnique({
+    where: { id },
+    select: { id: true, status: true, productId: true, licenseId: true }
+  });
+
+  if (!current) {
+    return null;
+  }
+
+  if (current.status !== InstallationStatus.BLOCKED) {
+    throw new Error("Installation is not blocked");
+  }
+
+  const installation = await prisma.installation.update({
+    where: { id: current.id },
+    data: { status: InstallationStatus.ACTIVE }
+  });
+
+  await createAuditEvent({
+    eventType: AuditEventType.INSTALLATION_UNBLOCKED,
+    installation: { connect: { id: installation.id } },
+    product: { connect: { id: installation.productId } },
+    license: installation.licenseId ? { connect: { id: installation.licenseId } } : undefined,
+    payload: { type: "installation" }
+  });
+
+  return installation;
+}
+
 export async function listAuditEvents(filter?: { search?: string; licenseId?: string; customerId?: string; eventType?: string; from?: string; to?: string }) {
   const where: Prisma.AuditEventWhereInput = {
     ...(filter?.licenseId ? { licenseId: filter.licenseId } : {}),

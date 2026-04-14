@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { AdminShell } from "../../components/AdminShell";
 import { adminFetch } from "@/lib/admin";
+import { InstallationAdminActions } from "./InstallationAdminActions";
 
 async function blockInstallationAction(formData: FormData) {
   "use server";
@@ -11,6 +12,17 @@ async function blockInstallationAction(formData: FormData) {
   if (!id) return;
 
   await adminFetch(`/admin/installations/${id}/block`, { method: "POST" });
+  revalidatePath("/installations");
+  revalidatePath(`/installations/${id}`);
+}
+
+async function unblockInstallationAction(formData: FormData) {
+  "use server";
+
+  const id = String(formData.get("id") || "");
+  if (!id) return;
+
+  await adminFetch(`/admin/installations/${id}/unblock`, { method: "POST" });
   revalidatePath("/installations");
   revalidatePath(`/installations/${id}`);
 }
@@ -41,10 +53,12 @@ export default async function InstallationDetailPage({ params }: { params: { id:
             <div className="detail-item"><strong>Last seen:</strong> {new Date(installation.lastSeenAt).toLocaleString()}</div>
           </div>
 
-          <form action={blockInstallationAction} style={{ marginTop: 16 }}>
-            <input type="hidden" name="id" value={installation.id} />
-            <button className="btn danger" type="submit">Block installation</button>
-          </form>
+          <InstallationAdminActions
+            status={installation.status}
+            installationId={installation.id}
+            blockAction={blockInstallationAction}
+            unblockAction={unblockInstallationAction}
+          />
         </div>
 
         <div className="card">

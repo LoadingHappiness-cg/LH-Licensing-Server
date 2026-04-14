@@ -414,6 +414,52 @@ test("refresh fails for blocked installation", async () => {
   }
 });
 
+test("blocked installation can be unblocked by admin", async () => {
+  const fixture = await createFixture();
+  try {
+    const activateResponse = await publicRequest("POST", "/api/v1/licenses/activate", {
+      activationToken: fixture.activationToken?.token,
+      hardwareHash,
+      appId,
+      appVersion
+    });
+    const activateBody = jsonBody(activateResponse);
+
+    const installation = await prisma.installation.findFirst({
+      where: { licenseId: fixture.license.id }
+    });
+    assert.ok(installation);
+
+    const blockResponse = await adminRequest("POST", `/api/v1/admin/installations/${installation!.id}/block`);
+    assert.equal(blockResponse.statusCode, 200);
+
+    const unblockResponse = await adminRequest("POST", `/api/v1/admin/installations/${installation!.id}/unblock`);
+    assert.equal(unblockResponse.statusCode, 200);
+
+    const refreshResponse = await publicRequest("POST", "/api/v1/licenses/refresh", {
+      licenseToken: activateBody.licenseToken,
+      hardwareHash,
+      appId,
+      appVersion: "1.0.1"
+    });
+    assert.equal(refreshResponse.statusCode, 200);
+
+    const unblockedInstallation = await prisma.installation.findUnique({
+      where: { id: installation!.id }
+    });
+    assert.equal(unblockedInstallation?.status, InstallationStatus.ACTIVE);
+    assert.equal(unblockedInstallation?.licenseId, fixture.license.id);
+
+    const events = await prisma.auditEvent.findMany({
+      where: { installationId: installation!.id }
+    });
+    assert.ok(events.some((event) => event.eventType === AuditEventType.INSTALLATION_BLOCKED));
+    assert.ok(events.some((event) => event.eventType === AuditEventType.INSTALLATION_UNBLOCKED));
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("activate and refresh fail when the installation is bound to a different license", async () => {
   const firstFixture = await createFixture();
   const secondFixture = await createFixture({ withActivationToken: false });
