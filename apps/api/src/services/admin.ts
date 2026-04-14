@@ -513,6 +513,66 @@ export async function extendLicense(id: string, expiresAt: string) {
   return updateLicense(id, { expiresAt });
 }
 
+function addMonthsUtc(base: Date, months: number) {
+  const result = new Date(base.getTime());
+  const dayOfMonth = result.getUTCDate();
+
+  result.setUTCDate(1);
+  result.setUTCMonth(result.getUTCMonth() + months);
+
+  const lastDayOfMonth = new Date(Date.UTC(result.getUTCFullYear(), result.getUTCMonth() + 1, 0)).getUTCDate();
+  result.setUTCDate(Math.min(dayOfMonth, lastDayOfMonth));
+
+  return result;
+}
+
+export async function rearmLicense(id: string, months: number) {
+  const current = await prisma.license.findUnique({
+    where: { id },
+    select: { id: true, status: true, expiresAt: true, customerId: true, productId: true }
+  });
+
+  if (!current) {
+    throw new Error("License not found");
+  }
+
+  if (current.status === LicenseStatus.REVOKED) {
+    throw new Error("Revoked licenses cannot be rearmed");
+  }
+
+  const now = new Date();
+  const baseDate = current.expiresAt > now ? current.expiresAt : now;
+  const nextExpiresAt = addMonthsUtc(baseDate, months);
+
+  const license = await prisma.$transaction(async (tx) => {
+    const updated = await tx.license.update({
+      where: { id },
+      data: { expiresAt: nextExpiresAt },
+      include: { customer: true, product: true, plan: true }
+    });
+
+    await tx.auditEvent.create({
+      data: {
+        eventType: AuditEventType.ADMIN_UPDATE,
+        license: { connect: { id: updated.id } },
+        product: { connect: { id: updated.productId } },
+        customer: updated.customerId ? { connect: { id: updated.customerId } } : undefined,
+        payload: {
+          type: "license-rearm",
+          months,
+          previousExpiresAt: current.expiresAt.toISOString(),
+          newExpiresAt: nextExpiresAt.toISOString(),
+          baseDate: baseDate.toISOString()
+        }
+      }
+    });
+
+    return updated;
+  });
+
+  return withExpiredStatus(license);
+}
+
 export async function createActivationLink(id: string) {
   const license = await prisma.license.findUnique({ where: { id } });
   if (!license) return null;

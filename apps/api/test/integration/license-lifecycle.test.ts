@@ -37,6 +37,19 @@ function pastDate(days: number) {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 }
 
+function addMonthsUtc(base: Date, months: number) {
+  const result = new Date(base.getTime());
+  const dayOfMonth = result.getUTCDate();
+
+  result.setUTCDate(1);
+  result.setUTCMonth(result.getUTCMonth() + months);
+
+  const lastDayOfMonth = new Date(Date.UTC(result.getUTCFullYear(), result.getUTCMonth() + 1, 0)).getUTCDate();
+  result.setUTCDate(Math.min(dayOfMonth, lastDayOfMonth));
+
+  return result;
+}
+
 function jsonBody(response: { body: string }) {
   return response.body ? JSON.parse(response.body) : {};
 }
@@ -454,6 +467,68 @@ test("activate and refresh fail when the installation is bound to a different li
   } finally {
     await firstFixture.cleanup();
     await secondFixture.cleanup();
+  }
+});
+
+test("rearm extends an active license from its current expiry and records an audit event", async () => {
+  const fixture = await createFixture({ expiresAt: new Date("2026-06-15T12:00:00.000Z") });
+  try {
+    const response = await adminRequest("POST", `/api/v1/admin/licenses/${fixture.license.id}/rearm`, {
+      months: 3
+    });
+
+    assert.equal(response.statusCode, 200);
+    const body = jsonBody(response);
+    assert.equal(body.id, fixture.license.id);
+    assert.equal(new Date(body.expiresAt).toISOString(), "2026-09-15T12:00:00.000Z");
+
+    const updatedLicense = await prisma.license.findUnique({
+      where: { id: fixture.license.id }
+    });
+    assert.ok(updatedLicense);
+    assert.equal(updatedLicense?.expiresAt.toISOString(), "2026-09-15T12:00:00.000Z");
+
+    const auditEvents = await prisma.auditEvent.findMany({
+      where: { licenseId: fixture.license.id },
+      orderBy: { createdAt: "desc" }
+    });
+    const rearmEvent = auditEvents.find((event) => event.payload && (event.payload as any).type === "license-rearm");
+    assert.ok(rearmEvent);
+    assert.equal(rearmEvent?.eventType, AuditEventType.ADMIN_UPDATE);
+    assert.equal((rearmEvent?.payload as any)?.months, 3);
+    assert.equal((rearmEvent?.payload as any)?.previousExpiresAt, "2026-06-15T12:00:00.000Z");
+    assert.equal((rearmEvent?.payload as any)?.newExpiresAt, "2026-09-15T12:00:00.000Z");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("rearm extends an expired license from the current time window", async () => {
+  const fixture = await createFixture({ expiresAt: pastDate(40) });
+  try {
+    const before = new Date();
+    const response = await adminRequest("POST", `/api/v1/admin/licenses/${fixture.license.id}/rearm`, {
+      months: 1
+    });
+    const after = new Date();
+
+    assert.equal(response.statusCode, 200);
+    const body = jsonBody(response);
+    const resultingExpiresAt = new Date(body.expiresAt);
+    const lowerBound = addMonthsUtc(before, 1);
+    const upperBound = addMonthsUtc(after, 1);
+
+    assert.ok(resultingExpiresAt >= lowerBound && resultingExpiresAt <= upperBound);
+
+    const auditEvents = await prisma.auditEvent.findMany({
+      where: { licenseId: fixture.license.id },
+      orderBy: { createdAt: "desc" }
+    });
+    const rearmEvent = auditEvents.find((event) => event.payload && (event.payload as any).type === "license-rearm");
+    assert.ok(rearmEvent);
+    assert.equal((rearmEvent?.payload as any)?.months, 1);
+  } finally {
+    await fixture.cleanup();
   }
 });
 
