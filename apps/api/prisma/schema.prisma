@@ -9,44 +9,104 @@ datasource db {
 
 enum LicenseStatus {
   ACTIVE
+  EXPIRED
   REVOKED
   SUSPENDED
 }
 
-enum LicenseEventType {
+enum InstallationStatus {
+  ACTIVE
+  BLOCKED
+  REVOKED
+}
+
+enum AuditEventType {
   ACTIVATE
   REFRESH
   REVOKE
   REBIND
   REBIND_DENIED
+  ADMIN_CREATE
   ADMIN_UPDATE
+  ADMIN_REVOKE
+  INSTALLATION_BLOCKED
+  LICENSE_EXPIRED
 }
 
 model Customer {
-  id        String    @id @default(uuid())
-  name      String
-  email     String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  licenses  License[]
+  id          String       @id @default(uuid())
+  code        String       @unique
+  name        String
+  email       String?
+  phone       String?
+  notes       String?
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  licenses    License[]
+  auditEvents AuditEvent[]
+}
+
+model Product {
+  id            String         @id @default(uuid())
+  code          String         @unique
+  name          String
+  notes         String?
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  plans         LicensePlan[]
+  licenses      License[]
+  installations Installation[]
+  auditEvents   AuditEvent[]
+}
+
+model LicensePlan {
+  id              String   @id @default(uuid())
+  productId       String
+  product         Product  @relation(fields: [productId], references: [id])
+  code            String
+  name            String
+  durationDays    Int?
+  maxCompanies    Int?
+  maxWorkstations Int?
+  entitlements    Json
+  notes           String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  licenses        License[]
+
+  @@unique([productId, code])
 }
 
 model License {
-  id               String          @id @default(uuid())
+  id               String       @id @default(uuid())
+  licenseKey       String       @unique
   customerId       String?
-  customer         Customer?       @relation(fields: [customerId], references: [id])
-  planName         String
-  maxCompanies     Int
-  maxWorkstations  Int
-  status           LicenseStatus   @default(ACTIVE)
+  customer         Customer?    @relation(fields: [customerId], references: [id])
+  productId        String
+  product          Product      @relation(fields: [productId], references: [id])
+  planId           String?
+  plan             LicensePlan? @relation(fields: [planId], references: [id])
+  status           LicenseStatus @default(ACTIVE)
+  startsAt         DateTime     @default(now())
   expiresAt        DateTime
+  notes            String?
+  overrides        Json?
   hardwareHash     String?
-  rebindCount      Int             @default(0)
-  rebindPeriod     String          @default("")
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  rebindCount      Int          @default(0)
+  rebindPeriod     String       @default("")
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
   activationTokens ActivationToken[]
-  events           LicenseEvent[]
+  activations      Activation[]
+  installations    Installation[]
+  events           AuditEvent[]
+
+  @@index([customerId])
+  @@index([productId])
+  @@index([planId])
 }
 
 model ActivationToken {
@@ -59,13 +119,71 @@ model ActivationToken {
   expiresAt  DateTime?
 }
 
-model LicenseEvent {
-  id           String          @id @default(uuid())
-  licenseId    String?
-  license      License?        @relation(fields: [licenseId], references: [id])
-  type         LicenseEventType
-  hardwareHash String?
-  ip           String?
-  userAgent    String?
-  createdAt    DateTime        @default(now())
+model Installation {
+  id                    String             @id @default(uuid())
+  productId             String
+  product               Product            @relation(fields: [productId], references: [id])
+  licenseId             String?
+  license               License?           @relation(fields: [licenseId], references: [id])
+  appId                 String
+  machineFingerprintHash String
+  deviceName            String?
+  osInfo                String?
+  status                InstallationStatus @default(ACTIVE)
+  firstSeenAt           DateTime           @default(now())
+  lastSeenAt            DateTime           @default(now())
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  activations           Activation[]
+  auditEvents           AuditEvent[]
+
+  @@index([appId])
+  @@index([machineFingerprintHash])
+  @@index([licenseId])
+  @@unique([appId, machineFingerprintHash])
+}
+
+model Activation {
+  id               String    @id @default(uuid())
+  licenseId        String
+  license          License   @relation(fields: [licenseId], references: [id])
+  installationId   String
+  installation     Installation @relation(fields: [installationId], references: [id])
+  refreshTokenHash String?
+  tokenJti         String?
+  clientVersion    String?
+  activatedAt      DateTime  @default(now())
+  expiresAt        DateTime?
+  lastRefreshedAt  DateTime?
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([licenseId])
+  @@index([installationId])
+}
+
+model AuditEvent {
+  id             String         @id @default(uuid())
+  eventType      AuditEventType
+  customerId     String?
+  customer       Customer?      @relation(fields: [customerId], references: [id])
+  productId      String?
+  product        Product?       @relation(fields: [productId], references: [id])
+  licenseId      String?
+  license        License?       @relation(fields: [licenseId], references: [id])
+  installationId String?
+  installation   Installation?  @relation(fields: [installationId], references: [id])
+  actorType      String?
+  actorId        String?
+  payload        Json?
+  ip             String?
+  userAgent      String?
+  createdAt      DateTime       @default(now())
+
+  @@index([eventType])
+  @@index([customerId])
+  @@index([productId])
+  @@index([licenseId])
+  @@index([installationId])
 }

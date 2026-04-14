@@ -12,7 +12,6 @@ const schema = z.object({
   SIGNING_KEY_PRIVATE_PEM: z.string().optional(),
   SIGNING_KEY_PRIVATE_PEM_PATH: z.string().optional(),
   EXTRA_PUBLIC_KEYS_PEM_PATHS: z.string().optional(),
-  ADMIN_API_KEY: z.string().optional(),
   ENTRA_TENANT_ID: z.string().optional(),
   ENTRA_CLIENT_ID: z.string().optional(),
   ENTRA_CLIENT_SECRET: z.string().optional(),

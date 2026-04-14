@@ -8,20 +8,21 @@ const jwksUrl = tenant ? `${authority}/${tenant}/discovery/v2.0/keys` : "";
 const issuer = tenant ? `${authority}/${tenant}/v2.0` : "";
 const jwks = jwksUrl ? createRemoteJWKSet(new URL(jwksUrl)) : null;
 
+function hasAdminClaim(payload: Record<string, unknown>) {
+  const required = config.ENTRA_ADMIN_GROUP_ID;
+  if (!required) {
+    return false;
+  }
+
+  const groups = (payload.groups as string[] | undefined) || [];
+  const roles = (payload.roles as string[] | undefined) || [];
+  return groups.includes(required) || roles.includes(required);
+}
+
 export async function requireAdmin(request: FastifyRequest, reply: FastifyReply) {
-  if (!config.ENTRA_TENANT_ID || !config.ENTRA_CLIENT_ID || !jwks) {
-    if (!config.ADMIN_API_KEY) {
-      reply.code(503).send({ error: "Admin auth not configured" });
-      return false;
-    }
-
-    const key = request.headers["x-admin-key"];
-    if (key !== config.ADMIN_API_KEY) {
-      reply.code(401).send({ error: "Invalid admin key" });
-      return false;
-    }
-
-    return true;
+  if (!config.ENTRA_TENANT_ID || !config.ENTRA_CLIENT_ID || !jwks || !config.ENTRA_ADMIN_GROUP_ID) {
+    reply.code(503).send({ error: "Admin auth not configured" });
+    return false;
   }
 
   const auth = request.headers.authorization || "";
@@ -37,12 +38,9 @@ export async function requireAdmin(request: FastifyRequest, reply: FastifyReply)
       audience: config.ENTRA_CLIENT_ID
     });
 
-    if (config.ENTRA_ADMIN_GROUP_ID) {
-      const groups = (payload.groups as string[] | undefined) || (payload.roles as string[] | undefined) || [];
-      if (!groups.includes(config.ENTRA_ADMIN_GROUP_ID)) {
-        reply.code(403).send({ error: "Not authorized" });
-        return false;
-      }
+    if (!hasAdminClaim(payload as Record<string, unknown>)) {
+      reply.code(403).send({ error: "Not authorized" });
+      return false;
     }
 
     return true;

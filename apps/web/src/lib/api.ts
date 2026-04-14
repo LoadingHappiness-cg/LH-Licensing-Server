@@ -1,5 +1,5 @@
 export async function apiFetch<T>(path: string, token: string, init: RequestInit = {}) {
-  const base = process.env.API_BASE_URL || "";
+  const base = process.env.API_BASE_URL || "http://localhost:3001/api/v1";
   const res = await fetch(`${base}${path}`, {
     ...init,
     headers: {
