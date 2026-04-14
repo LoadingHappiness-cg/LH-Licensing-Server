@@ -101,6 +101,7 @@ export default async function LicenseDetailPage({ params, searchParams }: { para
   const activationToken = searchParams?.activationToken || license.activationTokens?.[0]?.token || "";
   const activationLink = activationToken ? `${webConfig.siteUrl}/licenses/${license.id}?activationToken=${encodeURIComponent(activationToken)}` : "";
   const effectiveStatus = currentLicenseStatus(license);
+  const renderedAtUtc = new Date().toISOString();
 
   return (
     <AdminShell title={license.licenseKey} subtitle="Full license record with linked installations, activations, and audit events.">
@@ -188,6 +189,7 @@ export default async function LicenseDetailPage({ params, searchParams }: { para
             <LicenseAdminActions
               effectiveStatus={effectiveStatus}
               expiresAt={license.expiresAt}
+              renderedAtUtc={renderedAtUtc}
               renewalCadenceMonths={license.renewalCadenceMonths}
               renewalCadenceSource={license.renewalCadenceSource}
               planRenewalCadenceMonths={license.plan?.renewalCadenceMonths ?? null}

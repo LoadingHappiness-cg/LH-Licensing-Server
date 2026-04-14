@@ -3,6 +3,12 @@
 import { useState } from "react";
 import { cadenceSourceLabel, formatCadenceMonths } from "@/lib/cadence";
 
+const utcFormatter = new Intl.DateTimeFormat("en-GB", {
+  dateStyle: "short",
+  timeStyle: "short",
+  timeZone: "UTC"
+});
+
 function addMonthsUtc(base: Date, months: number) {
   const result = new Date(base.getTime());
   const dayOfMonth = result.getUTCDate();
@@ -17,12 +23,13 @@ function addMonthsUtc(base: Date, months: number) {
 }
 
 function formatDate(value: Date | string) {
-  return new Date(value).toLocaleString();
+  return utcFormatter.format(new Date(value));
 }
 
 export function LicenseAdminActions({
   effectiveStatus,
   expiresAt,
+  renderedAtUtc,
   renewalCadenceMonths,
   renewalCadenceSource,
   planRenewalCadenceMonths,
@@ -33,6 +40,7 @@ export function LicenseAdminActions({
 }: {
   effectiveStatus: string;
   expiresAt: string;
+  renderedAtUtc: string;
   renewalCadenceMonths: number;
   renewalCadenceSource: string;
   planRenewalCadenceMonths: number | null;
@@ -45,7 +53,7 @@ export function LicenseAdminActions({
   const [customMonths, setCustomMonths] = useState("1");
   const [notice, setNotice] = useState<string | null>(null);
 
-  const baseDate = effectiveStatus === "EXPIRED" ? new Date() : new Date(expiresAt);
+  const baseDate = effectiveStatus === "EXPIRED" ? new Date(renderedAtUtc) : new Date(expiresAt);
   const resultingExpiry = addMonthsUtc(baseDate, selectedMonths);
 
   async function copyToClipboard(value: string, label: string) {
