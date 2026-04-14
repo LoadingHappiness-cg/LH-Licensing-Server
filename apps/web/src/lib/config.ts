@@ -6,6 +6,11 @@ function requiredEnv(name: string) {
   return value.trim();
 }
 
+function optionalEnv(name: string) {
+  const value = process.env[name];
+  return value?.trim() || undefined;
+}
+
 function normalizeUrl(value: string, name: string) {
   try {
     return new URL(value).toString().replace(/\/$/, "");
@@ -14,12 +19,19 @@ function normalizeUrl(value: string, name: string) {
   }
 }
 
+function validateBcryptHash(value: string) {
+  if (!/^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(value)) {
+    throw new Error("ADMIN_PASSWORD_HASH must be a bcrypt hash generated outside the app.");
+  }
+  return value;
+}
+
 export const webConfig = {
   siteUrl: normalizeUrl(requiredEnv("SITE_URL"), "SITE_URL"),
   apiBaseUrl: normalizeUrl(requiredEnv("API_BASE_URL"), "API_BASE_URL"),
   nextAuthSecret: requiredEnv("NEXTAUTH_SECRET"),
-  entraTenantId: requiredEnv("ENTRA_TENANT_ID"),
-  entraClientId: requiredEnv("ENTRA_CLIENT_ID"),
-  entraClientSecret: requiredEnv("ENTRA_CLIENT_SECRET"),
-  entraAdminGroupId: requiredEnv("ENTRA_ADMIN_GROUP_ID")
+  adminUsername: requiredEnv("ADMIN_USERNAME"),
+  adminPasswordHash: validateBcryptHash(requiredEnv("ADMIN_PASSWORD_HASH")),
+  adminDisplayName: optionalEnv("ADMIN_DISPLAY_NAME"),
+  adminApiToken: requiredEnv("ADMIN_API_TOKEN")
 };

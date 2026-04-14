@@ -39,7 +39,7 @@ export function AdminShell({
           ))}
         </nav>
 
-        <a className="btn secondary full-width" href="/api/auth/signout">
+        <a className="btn secondary full-width" href="/api/auth/signout?callbackUrl=/login">
           Sign out
         </a>
       </aside>

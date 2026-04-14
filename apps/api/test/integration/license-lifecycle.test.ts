@@ -1,18 +1,12 @@
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
-import { generateKeyPairSync, randomBytes, type KeyObject } from "node:crypto";
-import type { AddressInfo } from "node:net";
+import { generateKeyPairSync, randomBytes } from "node:crypto";
 import { after, before, test } from "node:test";
 import { AuditEventType, InstallationStatus, LicenseStatus } from "@prisma/client";
-import { exportJWK, SignJWT } from "jose";
 
-const adminTenantId = "testtenant";
-const adminClientId = "test-admin-client";
-const adminGroupId = "test-admin-group";
-const adminKid = "test-admin-key";
 const licenseKid = "test-license-key";
 const jwtIssuer = "license.test";
 const jwtAudience = "EtiquetasGS1Test";
+const adminApiToken = "test-admin-api-token-0123456789abcdef0123456789abcdef";
 const appId = "EtiquetasGS1";
 const appVersion = "1.0.0";
 const hardwareHash = "HW-1234567890";
@@ -26,7 +20,6 @@ let buildServer: BuildServer;
 let signLicenseToken: SignLicenseToken;
 let app: Awaited<ReturnType<BuildServer>>;
 let adminToken: string;
-let adminJwksServer: ReturnType<typeof createServer>;
 
 function requireDatabaseUrl() {
   const databaseUrl = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
@@ -50,48 +43,6 @@ function jsonBody(response: { body: string }) {
 
 function makeLicenseTokenPrefix() {
   return `IT_${randomBytes(4).toString("hex").toUpperCase()}`;
-}
-
-async function startAdminJwksServer() {
-  const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-  const jwk = await exportJWK(publicKey);
-  jwk.kid = adminKid;
-  jwk.use = "sig";
-  jwk.alg = "RS256";
-  const jwks = JSON.stringify({ keys: [jwk] });
-
-  const server = createServer((req, res) => {
-    if (req.url === `/${adminTenantId}/discovery/v2.0/keys`) {
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(jwks);
-      return;
-    }
-
-    res.writeHead(404, { "content-type": "application/json" });
-    res.end(JSON.stringify({ error: "not found" }));
-  });
-
-  await new Promise<void>((resolve) => {
-    server.listen(0, "127.0.0.1", () => resolve());
-  });
-
-  const address = server.address() as AddressInfo;
-  return {
-    server,
-    privateKey,
-    authorityHost: `http://127.0.0.1:${address.port}`
-  };
-}
-
-async function issueAdminToken(privateKey: KeyObject, authorityHost: string) {
-  return new SignJWT({ groups: [adminGroupId] })
-    .setProtectedHeader({ alg: "RS256", kid: adminKid })
-    .setIssuer(`${authorityHost}/${adminTenantId}/v2.0`)
-    .setAudience(adminClientId)
-    .setSubject("admin-user")
-    .setIssuedAt()
-    .setExpirationTime("1h")
-    .sign(privateKey);
 }
 
 async function adminRequest(
@@ -233,13 +184,7 @@ async function createFixture(options?: {
 before(async () => {
   requireDatabaseUrl();
 
-  const jwks = await startAdminJwksServer();
-  adminJwksServer = jwks.server;
-  process.env.ENTRA_TENANT_ID = adminTenantId;
-  process.env.ENTRA_CLIENT_ID = adminClientId;
-  process.env.ENTRA_ADMIN_GROUP_ID = adminGroupId;
-  process.env.ENTRA_AUTHORITY_HOST = jwks.authorityHost;
-  process.env.ENTRA_CLIENT_SECRET = "test-secret";
+  process.env.ADMIN_API_TOKEN = adminApiToken;
   process.env.SIGNING_KEY_ID = licenseKid;
   process.env.SIGNING_KEY_PRIVATE_PEM = generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey.export({
     format: "pem",
@@ -256,13 +201,12 @@ before(async () => {
   prisma = prismaMod.prisma;
   signLicenseToken = jwtMod.signLicenseToken;
   app = await buildServer();
-  adminToken = await issueAdminToken(jwks.privateKey, jwks.authorityHost);
+  adminToken = adminApiToken;
 });
 
 after(async () => {
   await app?.close();
   await prisma?.$disconnect();
-  adminJwksServer?.close();
 });
 
 test("activate succeeds for an active license and creates canonical installation plus activation records", async () => {

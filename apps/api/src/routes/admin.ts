@@ -1,6 +1,6 @@
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { requireAdmin } from "../services/entra.js";
+import { requireAdmin } from "../services/adminAuth.js";
 import {
   blockInstallation,
   createCustomer,

@@ -33,8 +33,7 @@ Monorepo for the licensing backend (Fastify + Prisma) and internal admin web UI 
 - API: http://localhost:3001/api/v1
 
 ## Notes
-- Admin auth uses Entra ID (Azure AD). Configure tenant/client in env.
-- If Entra is not configured, the admin surface is disabled.
+- Admin auth uses a local username/password pair configured in env.
 - The internal UI is read/write for customers, products, plans, and licenses; installations and audit events are read-only.
 
 ## Required env vars
@@ -43,25 +42,24 @@ Monorepo for the licensing backend (Fastify + Prisma) and internal admin web UI 
 - Required:
   - `DATABASE_URL`
   - `SIGNING_KEY_PRIVATE_PEM` or `SIGNING_KEY_PRIVATE_PEM_PATH`
+  - `ADMIN_API_TOKEN`
 - Optional but recommended:
   - `JWT_ISSUER`
   - `JWT_AUDIENCE`
   - `BASE_URL` should be set to the public licensing server URL in preprod/prod
   - `PORT`
   - `API_PREFIX`
-  - `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET`, `ENTRA_ADMIN_GROUP_ID` for admin auth
 
 `apps/web`
 - Required:
   - `SITE_URL` for the external web origin, for example `http://192.168.27.3:3000`
   - `API_BASE_URL`
   - `NEXTAUTH_SECRET`
-  - `ENTRA_TENANT_ID`
-  - `ENTRA_CLIENT_ID`
-  - `ENTRA_CLIENT_SECRET`
-  - `ENTRA_ADMIN_GROUP_ID`
+  - `ADMIN_USERNAME`
+  - `ADMIN_PASSWORD_HASH`
+  - `ADMIN_API_TOKEN`
 - Optional:
-  - `NEXTAUTH_URL` if you need to override `SITE_URL`
+  - `ADMIN_DISPLAY_NAME`
 
 ## Keys
 
@@ -75,7 +73,7 @@ Set `SIGNING_KEY_PRIVATE_PEM_PATH` to the generated `private.pem`.
 
 ## Admin UI
 
-Open `/dashboard` after signing in with an Entra account in the admin group.
+Open `/login` and sign in with the local admin credentials from `apps/web/.env`.
 Seeded local data includes:
 - product `ETIQUETAS_GS1`
 - plan `BASIC_LOCAL`
@@ -84,10 +82,11 @@ Seeded local data includes:
 
 ### Admin auth assumptions
 
-- Admin access is fail-closed unless `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, and `ENTRA_ADMIN_GROUP_ID` are configured.
-- The web app expects the Entra `id_token` to contain either a `groups` claim or a `roles` claim.
-- The configured `ENTRA_ADMIN_GROUP_ID` value must appear in one of those claims.
-- If the claim is missing, the admin UI and admin API deny access.
+- Admin access is fail-closed unless `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`, and `ADMIN_API_TOKEN` are configured.
+- The password hash must be a bcrypt hash generated outside the app.
+- The web app marks the session as admin only after a successful username/password check.
+- The web app sends the shared `ADMIN_API_TOKEN` to the API when it calls admin routes.
+- If the session is missing or the shared admin token is missing or invalid, the admin UI and admin API deny access.
 
 ## VM / preprod startup
 
@@ -95,7 +94,7 @@ Required:
 - Node 22.x
 - MySQL 8 or MariaDB 10.11+
 - A valid RSA signing key for the API
-- Entra redirect URI configured for the external web origin
+- A local admin username/password hash and shared admin API token
 
 Place the runtime env files here:
 - `apps/api/.env`
@@ -116,5 +115,7 @@ npm run dev:web
 For a VM at `192.168.27.3`, set:
 - `SITE_URL=http://192.168.27.3:3000`
 - `API_BASE_URL=http://192.168.27.3:3001/api/v1`
-- Entra redirect URI to `http://192.168.27.3:3000/api/auth/callback/azure-ad`
-- Do not leave the Entra callback on `localhost`
+- `ADMIN_USERNAME=admin`
+- `ADMIN_PASSWORD_HASH=<bcrypt hash generated outside the app>`
+- `ADMIN_API_TOKEN=<long random shared secret>`
+- `ADMIN_DISPLAY_NAME=Loading Happiness Admin` if you want a friendly label

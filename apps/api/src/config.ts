@@ -11,18 +11,22 @@ const schema = z.object({
   SIGNING_KEY_ID: z.string().default("primary"),
   SIGNING_KEY_PRIVATE_PEM: z.string().optional(),
   SIGNING_KEY_PRIVATE_PEM_PATH: z.string().optional(),
-  EXTRA_PUBLIC_KEYS_PEM_PATHS: z.string().optional(),
-  ENTRA_TENANT_ID: z.string().optional(),
-  ENTRA_CLIENT_ID: z.string().optional(),
-  ENTRA_CLIENT_SECRET: z.string().optional(),
-  ENTRA_ADMIN_GROUP_ID: z.string().optional(),
-  ENTRA_AUTHORITY_HOST: z.string().default("https://login.microsoftonline.com")
+  ADMIN_API_TOKEN: z.string(),
+  EXTRA_PUBLIC_KEYS_PEM_PATHS: z.string().optional()
 }).superRefine((value, ctx) => {
   if (!value.SIGNING_KEY_PRIVATE_PEM && !value.SIGNING_KEY_PRIVATE_PEM_PATH) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["SIGNING_KEY_PRIVATE_PEM"],
       message: "Set SIGNING_KEY_PRIVATE_PEM or SIGNING_KEY_PRIVATE_PEM_PATH"
+    });
+  }
+
+  if (value.ADMIN_API_TOKEN.trim().length < 32) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["ADMIN_API_TOKEN"],
+      message: "Set ADMIN_API_TOKEN to a long random secret used by the web app to access admin routes"
     });
   }
 });

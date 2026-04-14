@@ -1,51 +1,65 @@
-import AzureADProvider from "next-auth/providers/azure-ad";
+import CredentialsProvider from "next-auth/providers/credentials";
 import type { NextAuthOptions } from "next-auth";
+import bcrypt from "bcryptjs";
 import { webConfig } from "./config";
-
-function decodeJwtPayload(token?: string | null) {
-  if (!token) return {};
-  const parts = token.split(".");
-  if (parts.length < 2) return {};
-  try {
-    return JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
-  } catch {
-    return {};
-  }
-}
-
-function uniqueClaims(...values: Array<string[] | undefined>) {
-  return [...new Set(values.flatMap((value) => value || []))];
-}
 
 export const authOptions: NextAuthOptions = {
   secret: webConfig.nextAuthSecret,
+  pages: {
+    signIn: "/login"
+  },
   providers: [
-    AzureADProvider({
-      clientId: webConfig.entraClientId,
-      clientSecret: webConfig.entraClientSecret,
-      tenantId: webConfig.entraTenantId
+    CredentialsProvider({
+      name: "Admin login",
+      credentials: {
+        username: { label: "Username", type: "text" },
+        password: { label: "Password", type: "password" }
+      },
+      async authorize(credentials) {
+        const username = credentials?.username?.trim() || "";
+        const password = credentials?.password || "";
+
+        if (!username || !password) {
+          return null;
+        }
+
+        if (username !== webConfig.adminUsername) {
+          return null;
+        }
+
+        const ok = await bcrypt.compare(password, webConfig.adminPasswordHash);
+        if (!ok) {
+          return null;
+        }
+
+        return {
+          id: "local-admin",
+          name: webConfig.adminDisplayName || webConfig.adminUsername,
+          email: webConfig.adminUsername,
+          isAdmin: true,
+          username: webConfig.adminUsername,
+          displayName: webConfig.adminDisplayName || webConfig.adminUsername
+        };
+      }
     })
   ],
   session: { strategy: "jwt" },
   callbacks: {
-    async jwt({ token, account }) {
-      if (account?.access_token) {
-        token.accessToken = account.access_token;
-      }
-      if (account?.id_token) {
-        token.idToken = account.id_token;
-        const claims = decodeJwtPayload(account.id_token) as { groups?: string[]; roles?: string[] };
-        token.groups = uniqueClaims(claims.groups);
-        token.roles = uniqueClaims(claims.roles);
+    async jwt({ token, user }) {
+      if (user) {
+        token.isAdmin = Boolean((user as { isAdmin?: boolean }).isAdmin);
+        token.username = (user as { username?: string }).username;
+        token.displayName = (user as { displayName?: string }).displayName;
       }
       return token;
     },
     async session({ session, token }) {
-      if (token.accessToken) {
-        (session as any).accessToken = token.accessToken;
-      }
-      (session as any).groups = token.groups || [];
-      (session as any).roles = token.roles || [];
+      const isAdmin = Boolean(token.isAdmin);
+      session.isAdmin = isAdmin;
+      session.user = {
+        name: (token.displayName as string | undefined) || session.user?.name || webConfig.adminDisplayName || webConfig.adminUsername,
+        email: (token.username as string | undefined) || session.user?.email || webConfig.adminUsername
+      };
       return session;
     }
   }
