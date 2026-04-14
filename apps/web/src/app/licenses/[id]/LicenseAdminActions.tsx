@@ -170,6 +170,7 @@ export function LicenseAdminActions({
       </form>
 
       <form action={renewalFormAction} className="stack">
+        <input type="hidden" name="id" value={licenseId} />
         <input type="hidden" name="months" value={selectedMonths} />
         <div className="detail-item">
           <div><strong>Effective cadence:</strong> {formatCadenceMonths(renewalCadenceMonths)}</div>
@@ -205,7 +206,15 @@ export function LicenseAdminActions({
               min="1"
               step="1"
               value={customMonths}
-              onChange={(event) => setCustomMonths(event.target.value)}
+              onChange={(event) => {
+                const nextValue = event.target.value;
+                setCustomMonths(nextValue);
+
+                const parsed = Number(nextValue);
+                if (Number.isInteger(parsed) && parsed >= 1) {
+                  setSelectedMonths(parsed);
+                }
+              }}
               disabled={!canRenew}
             />
           </label>
