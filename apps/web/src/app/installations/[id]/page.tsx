@@ -27,6 +27,17 @@ async function unblockInstallationAction(formData: FormData) {
   revalidatePath(`/installations/${id}`);
 }
 
+async function releaseInstallationAction(formData: FormData) {
+  "use server";
+
+  const id = String(formData.get("id") || "");
+  if (!id) return;
+
+  await adminFetch(`/admin/installations/${id}/release`, { method: "POST" });
+  revalidatePath("/installations");
+  revalidatePath(`/installations/${id}`);
+}
+
 export default async function InstallationDetailPage({ params }: { params: { id: string } }) {
   const installation = await adminFetch<any>(`/admin/installations/${params.id}`).catch(() => null);
   if (!installation) {
@@ -48,6 +59,7 @@ export default async function InstallationDetailPage({ params }: { params: { id:
             <div className="detail-item"><strong>Device:</strong> {installation.deviceName || "-"}</div>
             <div className="detail-item"><strong>OS Info:</strong> {installation.osInfo || "-"}</div>
             <div className="detail-item"><strong>License:</strong> {installation.license?.licenseKey || "-"}</div>
+            <div className="detail-item"><strong>Bound license state:</strong> {installation.license?.status || "-"}</div>
             <div className="detail-item"><strong>Status:</strong> {installation.status}</div>
             <div className="detail-item"><strong>First seen:</strong> {new Date(installation.firstSeenAt).toLocaleString()}</div>
             <div className="detail-item"><strong>Last seen:</strong> {new Date(installation.lastSeenAt).toLocaleString()}</div>
@@ -55,9 +67,11 @@ export default async function InstallationDetailPage({ params }: { params: { id:
 
           <InstallationAdminActions
             status={installation.status}
+            licenseStatus={installation.license?.status || null}
             installationId={installation.id}
             blockAction={blockInstallationAction}
             unblockAction={unblockInstallationAction}
+            releaseAction={releaseInstallationAction}
           />
         </div>
 

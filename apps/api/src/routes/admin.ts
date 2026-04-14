@@ -25,6 +25,7 @@ import {
   reactivateLicense,
   revokeLicense,
   rearmLicense,
+  releaseInstallation,
   suspendLicense,
   unblockInstallation,
   updateCustomer,
@@ -421,6 +422,18 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       return installation;
     } catch (error: any) {
       return reply.badRequest(error?.message || "Unable to unblock installation");
+    }
+  });
+
+  app.post("/installations/:id/release", async (request, reply) => {
+    try {
+      const installation = await releaseInstallation((request.params as { id: string }).id);
+      if (!installation) {
+        return reply.notFound("Installation not found");
+      }
+      return installation;
+    } catch (error: any) {
+      return reply.badRequest(error?.message || "Unable to release installation");
     }
   });
 

@@ -708,6 +708,44 @@ export async function unblockInstallation(id: string) {
   return installation;
 }
 
+export async function releaseInstallation(id: string) {
+  const current = await prisma.installation.findUnique({
+    where: { id },
+    include: { license: true }
+  });
+
+  if (!current) {
+    return null;
+  }
+
+  if (current.status !== InstallationStatus.ACTIVE) {
+    throw new Error("Only active installations can be released");
+  }
+
+  if (!current.licenseId || current.license?.status !== LicenseStatus.REVOKED) {
+    throw new Error("Only installations bound to revoked licenses can be released");
+  }
+
+  const installation = await prisma.installation.update({
+    where: { id: current.id },
+    data: { licenseId: null }
+  });
+
+  await createAuditEvent({
+    eventType: AuditEventType.INSTALLATION_RELEASED,
+    installation: { connect: { id: installation.id } },
+    product: { connect: { id: installation.productId } },
+    license: current.licenseId ? { connect: { id: current.licenseId } } : undefined,
+    payload: {
+      type: "installation",
+      previousLicenseId: current.licenseId,
+      previousLicenseKey: current.license?.licenseKey || ""
+    }
+  });
+
+  return installation;
+}
+
 export async function listAuditEvents(filter?: { search?: string; licenseId?: string; customerId?: string; eventType?: string; from?: string; to?: string }) {
   const where: Prisma.AuditEventWhereInput = {
     ...(filter?.licenseId ? { licenseId: filter.licenseId } : {}),

@@ -460,6 +460,66 @@ test("blocked installation can be unblocked by admin", async () => {
   }
 });
 
+test("revoked installation can be released for recovery on a new license", async () => {
+  const revokedFixture = await createFixture();
+  const recoveryFixture = await createFixture();
+  try {
+    const firstActivate = await publicRequest("POST", "/api/v1/licenses/activate", {
+      activationToken: revokedFixture.activationToken?.token,
+      hardwareHash,
+      appId,
+      appVersion
+    });
+    const firstBody = jsonBody(firstActivate);
+
+    const installation = await prisma.installation.findFirst({
+      where: { licenseId: revokedFixture.license.id }
+    });
+    assert.ok(installation);
+
+    const releaseDeniedResponse = await adminRequest("POST", `/api/v1/admin/installations/${installation!.id}/release`);
+    assert.equal(releaseDeniedResponse.statusCode, 400);
+    assert.match(releaseDeniedResponse.body, /Only installations bound to revoked licenses can be released/);
+
+    const revokeResponse = await adminRequest("POST", `/api/v1/admin/licenses/${revokedFixture.license.id}/revoke`);
+    assert.equal(revokeResponse.statusCode, 200);
+
+    const releaseResponse = await adminRequest("POST", `/api/v1/admin/installations/${installation!.id}/release`);
+    assert.equal(releaseResponse.statusCode, 200);
+
+    const afterRelease = await prisma.installation.findUnique({
+      where: { id: installation!.id }
+    });
+    assert.equal(afterRelease?.licenseId, null);
+    assert.equal(afterRelease?.status, InstallationStatus.ACTIVE);
+
+    const newActivate = await publicRequest("POST", "/api/v1/licenses/activate", {
+      activationToken: recoveryFixture.activationToken?.token,
+      hardwareHash,
+      appId,
+      appVersion: "1.0.1"
+    });
+    assert.equal(newActivate.statusCode, 200);
+    const newBody = jsonBody(newActivate);
+
+    const reboundInstallation = await prisma.installation.findUnique({
+      where: { id: installation!.id }
+    });
+    assert.equal(reboundInstallation?.licenseId, recoveryFixture.license.id);
+
+    const events = await prisma.auditEvent.findMany({
+      where: { installationId: installation!.id }
+    });
+    assert.ok(events.some((event) => event.eventType === AuditEventType.INSTALLATION_RELEASED));
+
+    assert.ok(firstBody.licenseToken);
+    assert.ok(newBody.licenseToken);
+  } finally {
+    await revokedFixture.cleanup();
+    await recoveryFixture.cleanup();
+  }
+});
+
 test("activate and refresh fail when the installation is bound to a different license", async () => {
   const firstFixture = await createFixture();
   const secondFixture = await createFixture({ withActivationToken: false });
